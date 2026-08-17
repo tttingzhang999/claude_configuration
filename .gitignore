@@ -10,7 +10,7 @@ __pycache__/
 
 # Private sanitization mapping — names the real people, employer, clients and
 # paths being scrubbed. Committing it would publish what the export removes.
-sanitize-rules.local.py
+sanitize-rules*.py
 
 # OS / editor
 .DS_Store

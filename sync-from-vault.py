@@ -7,11 +7,10 @@
 into this public repo, sanitizing personal / employer / client data on the way.
 
 Usage:
-    cp sanitize-rules.example.py sanitize-rules.local.py   # once, then fill it in
     VAULT_ROOT="/path/to/your/vault" uv run sync-from-vault.py [--check]
 
 Flow:
-    1. Load the scrubbing rules from sanitize-rules.local.py (gitignored — the
+    1. Load the scrubbing rules from the local rules file (gitignored — the
        mapping names the very identifiers this export removes, so it never ships).
     2. Wipe the managed mirror paths in this repo (never touches native files
        like README / LICENSE / templates / this script).
@@ -90,20 +89,29 @@ WHOLESALE = {
 }
 
 # --- Sanitization rules live OUTSIDE this repo -----------------------------
-# sanitize-rules.local.py is gitignored. It is the only place that names the real
+# The rules file is gitignored. It is the only place that names the real
 # identifiers being scrubbed, and committing that mapping would publish exactly
-# what this export exists to remove. See sanitize-rules.example.py.
+# what this export exists to remove — including names that are not mine to publish.
 RULES_FILE = REPO / "sanitize-rules.local.py"
+
+RULES_HELP = f"""\
+Write {RULES_FILE.name} (gitignored, never commit it) exporting two ordered lists:
+
+    SUBSTITUTIONS = [(kind, pattern, replacement), ...]   # applied top-to-bottom
+    FORBIDDEN     = [(kind, pattern), ...]                # fail-closed final scan
+
+kind is "re" for a raw regex, or "word" for a bare identifier (a name, a ticket
+prefix, a Slack id) — "word" wraps it in a boundary that counts punctuation and
+underscores as edges. Do not hand-write \\b: regex counts _ as a word character,
+so \\bNAME\\b misses NAME inside markdown emphasis (_as NAME_).
+
+Order matters: put the longer rule before the shorter one it contains.\
+"""
 
 
 def load_rules():
     if not RULES_FILE.exists():
-        print(
-            f"ERROR: {RULES_FILE.name} not found.\n"
-            "       cp sanitize-rules.example.py sanitize-rules.local.py and fill it in.\n"
-            "       It stays gitignored — the mapping must never be committed.",
-            file=sys.stderr,
-        )
+        print(f"ERROR: {RULES_FILE.name} not found.\n\n{RULES_HELP}", file=sys.stderr)
         raise SystemExit(2)
     spec = importlib.util.spec_from_file_location("sanitize_rules", RULES_FILE)
     mod = importlib.util.module_from_spec(spec)
@@ -172,10 +180,10 @@ def final_scan() -> list[str]:
     for f in REPO.rglob("*"):
         if not f.is_file() or f.suffix.lower() not in TEXT_SUFFIXES:
             continue
-        # The rules files are the only ones allowed to name what is being scrubbed;
-        # sanitize-rules.local.py is gitignored and never ships. templates/ holds
-        # the bundled example configs that WHOLESALE drops in.
-        if REPO / "templates" in f.parents or f.name.startswith("sanitize-rules."):
+        # The rules file is the only one allowed to name what is being scrubbed,
+        # and it is gitignored. templates/ holds the bundled example configs that
+        # WHOLESALE drops in.
+        if REPO / "templates" in f.parents or f == RULES_FILE:
             continue
         try:
             for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
