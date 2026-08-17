@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+
+# Machine-local skill state (never commit)
+**/state/
+.claude/settings.local.json
+
+# Private sanitization mapping — names the real people, employer, clients and
+# paths being scrubbed. Committing it would publish what the export removes.
+sanitize-rules.local.py
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Obsidian local workspace state
+.obsidian/
+.smart-env/

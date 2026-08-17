@@ -1,0 +1,17 @@
+note: |
+  Example registry for the repo-router skill. Copy this to
+  .claude/skills/repo-router/repos.yaml and fill in your own repos, OR let
+  scripts/scan.py auto-generate it. Paths are $HOME-relative. Curated fields
+  (vault_project, description) are preserved across scans, keyed by `remote`.
+repos:
+- name: example-service
+  path: code/work/example-service
+  remote: git@github.com:your-org/example-service.git
+  host: github:your-org
+  vault_project: ExampleProject
+  description: Example backend service — replace with your own repo metadata.
+- name: personal-blog
+  path: code/personal/personal-blog
+  remote: git@github.com:your-user/personal-blog.git
+  host: github:your-user
+  description: Example personal project.

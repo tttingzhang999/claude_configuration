@@ -1,0 +1,62 @@
+filters:
+  and:
+    - file.inFolder("03 Writing")
+    - 'file.ext == "md"'
+
+formulas:
+  status: 'if(file.folder.contains("drafts"), "📝 Draft", if(file.folder.contains("workspace"), "🏢 Workspace（內部）", "🌐 Blog（公開）"))'
+  days_since_update: '(now() - file.mtime).days.round(0)'
+
+properties:
+  formula.status:
+    displayName: "狀態"
+  file.name:
+    displayName: "標題"
+  file.mtime:
+    displayName: "最後更新"
+  formula.days_since_update:
+    displayName: "幾天前"
+  file.tags:
+    displayName: "Tags"
+
+views:
+  - type: cards
+    name: "看板（Kanban-like）"
+    groupBy:
+      property: formula.status
+      direction: ASC
+    order:
+      - file.name
+      - formula.status
+      - file.mtime
+      - file.tags
+
+  - type: table
+    name: "Drafts（草稿）"
+    filters:
+      and:
+        - 'file.folder.contains("drafts")'
+    order:
+      - file.name
+      - file.mtime
+      - formula.days_since_update
+
+  - type: table
+    name: "Workspace（內部版）"
+    filters:
+      and:
+        - 'file.folder.contains("workspace")'
+    order:
+      - file.name
+      - file.mtime
+      - formula.days_since_update
+
+  - type: table
+    name: "Blog（公開版）"
+    filters:
+      and:
+        - 'file.folder.contains("blog")'
+    order:
+      - file.name
+      - file.mtime
+      - formula.days_since_update

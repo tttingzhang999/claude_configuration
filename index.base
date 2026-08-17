@@ -1,0 +1,42 @@
+filters:
+  and:
+    - file.inFolder("02 Knowledge")
+    - file.ext == "md"
+formulas:
+  days_since_update: (now() - file.mtime).days.round(0)
+properties:
+  file.name:
+    displayName: 筆記
+  file.folder:
+    displayName: Topic
+  file.mtime:
+    displayName: 最後更新
+  formula.days_since_update:
+    displayName: 幾天前
+  file.tags:
+    displayName: Tags
+views:
+  - type: table
+    name: 依 Topic 分組
+    groupBy:
+      property: file.folder
+      direction: ASC
+    order:
+      - file.name
+      - file.mtime
+      - formula.days_since_update
+      - file.tags
+  - type: table
+    name: 最近更新
+    order:
+      - file.name
+      - file.folder
+      - file.mtime
+      - formula.days_since_update
+    limit: 30
+  - type: cards
+    name: Gallery
+    order:
+      - file.name
+      - file.folder
+      - file.tags

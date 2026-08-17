@@ -1,0 +1,47 @@
+filters:
+  and:
+    - file.inFolder("01 Work/projects/_template/SDD")
+    - type == "proposal"
+formulas:
+  change: file.folder
+properties:
+  ticket:
+    displayName: Ticket
+  title:
+    displayName: 標題
+  status:
+    displayName: 狀態
+  propose_tier:
+    displayName: CI 階
+  design_approved:
+    displayName: 設計拍板
+  jira:
+    displayName: Jira
+  file.mtime:
+    displayName: 最後更新
+views:
+  - type: table
+    name: 進度看板
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - ticket
+      - title
+      - propose_tier
+      - design_approved
+      - file.mtime
+    columnSize:
+      note.ticket: 140
+      note.title: 238
+      note.propose_tier: 210
+      note.design_approved: 216
+  - type: table
+    name: 待拍板
+    filters:
+      and:
+        - design_approved == false
+    order:
+      - ticket
+      - title
+      - status

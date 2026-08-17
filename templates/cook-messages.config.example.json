@@ -1,0 +1,12 @@
+{
+  "project_map": {
+    "ExampleProject": ["{home}/code/work/example-project*"],
+    "ExampleServiceB": ["{home}/code/work/example-service*"]
+  },
+  "slack_user_id": "YOUR_SLACK_USER_ID",
+  "slack_channels": {
+    "YOUR_SLACK_CHANNEL_ID": "ExampleProject",
+    "#example-project-internal": "ExampleProject",
+    "#example-service-b": "ExampleServiceB"
+  }
+}
