@@ -249,6 +249,7 @@ fi
 # The vault's Codex view shares the same skill originals as both home installs.
 # A relative link keeps this alias portable when the vault moves to another machine.
 echo "-- vault codex skills/ (shared source)"
+run mkdir -p "$VAULT_CODEX"
 link_item "../.claude/skills" "$VAULT_CODEX/skills" "vault-codex-skills"
 
 # --- Codex: top-level symlinked files ---------------------------------------
