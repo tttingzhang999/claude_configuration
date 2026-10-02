@@ -9,10 +9,15 @@
 # FAIL-OPEN by design: no session id / no marker / unset / unparseable => allow (exit 0).
 # Only an unambiguous tests_green=false blocks (exit 2). Ordinary sessions
 # (no active SDD) are never affected.
+#
+# Blocks once per stop attempt: when stop_hook_active=true (the retry after a
+# block) it allows, so a deliberate pause cannot trap the session in a loop.
 
+input="$(cat)"
 sid=""
 if command -v jq >/dev/null 2>&1; then
-  sid="$(cat | jq -r '.session_id // empty' 2>/dev/null)"
+  [ "$(printf '%s' "$input" | jq -r '.stop_hook_active // false' 2>/dev/null)" = "true" ] && exit 0
+  sid="$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)"
 fi
 [ -n "$sid" ] || sid="$CLAUDE_CODE_SESSION_ID"
 [ -n "$sid" ] || exit 0

@@ -7,7 +7,7 @@
 - [3. design.md — explains HOW](#3-designmd--explains-how)
 - [4. tasks.md — the implementation checklist](#4-tasksmd--the-implementation-checklist)
 
-Ported from OpenSpec `schemas/spec-driven/{schema.yaml,templates/}`, adapted for
+Aligned with OpenSpec v1.13.2 (`db230978`), `schemas/spec-driven/{schema.yaml,templates/}`, adapted for
 the vault: artifacts live in `01 Work/projects/<PROJECT>/SDD/<ticket>-<slug>/`,
 frontmatter carries the two tiers, content is written in **English** (native, to
 match OpenSpec and avoid translation drift).
@@ -16,7 +16,7 @@ match OpenSpec and avoid translation drift).
 > content to copy into the file. Fill the template's sections; never paste these
 > guidance blocks into the artifact.
 
-Dependency chain (first missing file = next step):
+Drafting order (use planning-contract.md for completeness and skip_specs):
 
 ```
 proposal.md  →  specs/<capability>.md  →  design.md  →  tasks.md
@@ -35,8 +35,8 @@ Sections:
 
 - **Why**: 1–2 sentences on the problem or opportunity. What problem does this solve? Why now?
 - **What Changes**: Bullet list of concrete changes (new capabilities, modifications, removals). Mark breaking changes with **BREAKING**.
-- **Capabilities**: the contract between proposal and specs — research existing specs first.
-  - **New Capabilities**: each becomes a new `specs/<name>/spec.md` (kebab-case, e.g. `rate-limit`).
+- **Capabilities**: the contract between proposal and specs. Read canonical project `specs/` first; historical `SDD/*/specs/*.md` are deltas, not current truth. If no baseline exists, establish it from merged changes and pre-change code/tests, recording gaps. Reuse exact capability names/paths. Read `planning-contract.md` for explicit no-behavior-change opt-out.
+  - **New Capabilities**: each becomes a new `specs/<name>.md` (kebab-case, e.g. `rate-limit`).
   - **Modified Capabilities**: existing capabilities whose _requirements_ change (not mere implementation detail). Each needs a delta spec. Leave empty if none.
 - **Impact**: affected code, APIs, dependencies, systems; backward-compatibility note.
 
@@ -94,6 +94,25 @@ created: <YYYY-MM-DD>
 
 **Instruction**
 
+A spec is a **behavior contract, not an implementation plan**.
+
+Belongs in a spec:
+
+- Observable behavior that users or downstream systems rely on.
+- Inputs, outputs, and error conditions.
+- External constraints (security, privacy, reliability, compatibility).
+- Scenarios that can be tested or explicitly validated.
+
+Does not belong in a spec:
+
+- Internal class / function names.
+- Library or framework choices.
+- Step-by-step implementation detail.
+- Execution plans — those belong in design.md or tasks.md.
+
+Quick test: if the implementation can change without changing externally visible
+behavior, it does not belong in the spec.
+
 One spec file per capability from the proposal's Capabilities section.
 
 - New capability: use the exact kebab-case name → `specs/<capability>.md`.
@@ -111,7 +130,11 @@ Format rules:
 - Each requirement: `### Requirement: <name>` + description using **SHALL/MUST** (avoid should/may).
 - Each scenario: `#### Scenario: <name>` in **WHEN/THEN** form.
 - **CRITICAL**: scenarios use **exactly 4 hashtags** (`####`). 3 hashtags or bullets fail silently.
-- Every requirement has **at least one** scenario.
+- Every ADDED/MODIFIED requirement has **at least one** nonempty WHEN/THEN scenario. REMOVED uses Reason/Migration; RENAMED uses FROM/TO and retained baseline behavior, not invented scenarios.
+
+**New capability only**: open the delta spec with a `## Purpose` section — one or
+two sentences (50+ characters) on what the capability is for. A delta for an
+**existing** capability gets no `## Purpose`; that capability already has one.
 
 MODIFIED workflow: locate the existing requirement, copy the ENTIRE block, paste
 under `## MODIFIED Requirements`, edit to new behavior, keep header text matching.
@@ -128,6 +151,10 @@ capability: <capability-kebab>
 type: spec-delta
 created: <YYYY-MM-DD>
 ---
+
+## Purpose
+
+<New capability only: one or two sentences (50+ chars) on what this capability is for. Delete this section for an existing capability.>
 
 ## ADDED Requirements
 
@@ -176,16 +203,22 @@ change you may keep it minimal, but the linear chain still expects the file.)
 
 Sections:
 
-- **Context**: background, current state, constraints, stakeholders.
-- **Goals / Non-Goals**: what this achieves and what it explicitly excludes.
+- **Context**: only the current state and constraints needed to explain the approach. Point at the proposal for motivation (e.g. "See proposal.md — Why"); don't restate it.
+- **Goals / Non-Goals**: what this achieves and what it explicitly excludes. Add design-level boundaries only; don't restate the proposal's scope.
 - **Decisions**: key technical choices **with rationale and alternatives** (why X over Y?). This is where N approaches + trade-offs live.
 - **Risks / Trade-offs**: known limits, failure modes. Format: `[Risk] → Mitigation`.
 - **Migration Plan** (if applicable): deploy steps, rollback.
-- **Open Questions** (if any): unresolved decisions.
+- **Open Questions**: unknowns that can safely be answered later **without** changing the specs, the approach, or the task breakdown. Omit the section if there are none.
 
-Focus on architecture and approach, not line-by-line code. Reference the proposal
-for motivation and specs for requirements. A non-trivial flow gets a mermaid
-diagram (when a node links to a note, add `class NodeName internal-link;`).
+Open Questions are for genuinely deferrable unknowns, not for decisions you
+skipped. If a question would change the specs, the chosen approach, or the task
+breakdown → resolve it now. Ask the user; don't guess.
+
+Focus on architecture and approach, not line-by-line code. The proposal covers
+why and what; design covers how. Reference the proposal for motivation and the
+specs for requirements — if a section would only restate them, point at them
+instead. A non-trivial flow gets a mermaid diagram (when a node links to a note,
+add `class NodeName internal-link;`).
 
 **Template**
 
@@ -199,7 +232,7 @@ created: <YYYY-MM-DD>
 
 ## Context
 
-<background, current state, constraints.>
+<current state and constraints that shape the approach. See proposal.md — Why for motivation; don't restate it.>
 
 ## Goals / Non-Goals
 
@@ -234,15 +267,21 @@ graph LR
 
 **Instruction**
 
+Before writing tasks, check `design.md` for **Open Questions**. If any of them
+would change what gets built, resolve it with the user first. Never bake an
+unstated assumption into the task list.
+
 **Follow the format exactly** — the apply phase (M4) parses `- [ ]` checkboxes to
-track progress, and `validate_sdd.py` requires a task tier on every task. Tasks
-without `- [ ]` or without a `[tier]` tag won't be tracked / will fail validation.
+track progress, and `validate_sdd.py` requires a task tier on every task. Generate canonical `- [ ]` tasks with a `[tier]` tag. Reading uses the shared parser: only x/X (allowing surrounding spaces) is done; empty/unknown one-character markers stay pending. `validate_sdd.py --tasks-json` is the authority, including nested and alternate CommonMark list markers.
 
 Guidelines:
 - Group related tasks under `## N` numbered headings.
 - Each task: `- [ ] N.M \`[tier]\` <description>` where tier ∈ `sonnet|opus` (never `haiku`).
-- **TDD ordering**: write the failing test first (RED) → implement to green (GREEN) → run tests to confirm. Bake the tests into the list.
-- Order by dependency (what must come first?). Each task small enough for one session and verifiable (you know when it's done).
+- **One behavior task = one complete TDD cycle** (RED → GREEN → applicable checks). Do not split RED and GREEN into tasks that each must finish green. Non-behavior tasks use their stated verification command or delivered artifact.
+- Each checkbox MUST name its verification: test, command, observable outcome, or delivered artifact.
+- Each group lands its own required tests and documentation; a final group is only for cross-group integration. Do not invent docs/tests for work that needs neither.
+- Put `Depends on: none` or `Depends on: 1, 2` immediately under each group heading. Missing declarations on old plans mean serial group order, not independence. Reject unknown dependencies/cycles before apply. Overlapping file ownership also requires serialization.
+- Keep each task small enough for one session; order by dependency.
 
 Reference specs for *what* to build, design for *how*.
 
@@ -258,12 +297,14 @@ created: <YYYY-MM-DD>
 
 ## 1. <group>
 
-- [ ] 1.1 `[opus]` Write a failing test: <behavior from a spec scenario> (RED)
-- [ ] 1.2 `[opus]` Implement <the minimal thing> to make 1.1 pass (GREEN)
-- [ ] 1.3 `[sonnet]` Run the tests to confirm GREEN and a clean lint
+Depends on: none
 
-## 2. <group>
+- [ ] 1.1 `[opus]` Implement <behavior> with RED→GREEN; verify <named test command> passes.
+- [ ] 1.2 `[sonnet]` Document <changed interface>; verify <documented example> works.
 
-- [ ] 2.1 `[opus]` <boundary-correctness or tricky task> and prove it with a test
-- [ ] 2.2 `[sonnet]` Run the `<propose_tier>` suite and confirm all pass
+## 2. <dependent group>
+
+Depends on: 1
+
+- [ ] 2.1 `[opus]` Implement <dependent behavior> with RED→GREEN; verify <integration command> passes.
 ````

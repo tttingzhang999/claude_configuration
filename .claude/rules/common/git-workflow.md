@@ -58,7 +58,7 @@ Otherwise list user-provided references (Jira/Linear/design doc). Omit if neithe
 Background, e.g. "Covered by existing tests in X_test.go".>
 ```
 
-**Title format:** `[<base-branch>] <type>: <description>` (imperative, ≤72 chars, no trailing period). Use the Conventional Commits prefix only if the repo already does; otherwise a plain imperative title.
+**Title format:** `JIRA-123 <type>: <description>` when a Jira ticket is provided; `<type>: <description>` otherwise (imperative, ≤72 chars, no trailing period). The ticket id is bare — no brackets, no trailing dash. Use the Conventional Commits prefix only if the repo already does; otherwise a plain imperative title.
 
 **Do not fabricate** motivation, ticket numbers, or issue links not present in commits/code. If intent is ambiguous, ask before composing.
 

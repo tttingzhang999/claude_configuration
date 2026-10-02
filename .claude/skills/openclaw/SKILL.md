@@ -158,7 +158,11 @@ For channel changes: `openclaw channels status --probe`.
 | `openclaw channels status --probe` | Channel transport health |
 | `openclaw logs --follow` | Tail gateway logs |
 | `openclaw pairing list --channel <ch>` | Paired senders for a channel |
-| `openclaw models status` | Model provider health |
+| `openclaw models status [--probe --probe-provider <p>]` | Model provider health / live auth probe |
+| `openclaw models auth list [--provider <p>]` | List stored auth profiles + expiry |
+| `openclaw models auth login --provider <p> [--device-code] [--profile-id <id>]` | (Re-)authenticate a provider via OAuth |
+| `openclaw update [--dry-run] [--channel <ch>] [--tag <ver>]` | Supervised self-update (npm or git); `update status` shows channel + available version |
+| `openclaw backup create --output <dir> --verify` | Backup before a major-release update |
 | `openclaw infer model run --model <m> --prompt "hi" --json` | Direct model test |
 | `openclaw cron status` / `openclaw cron runs --id <jobId>` | Cron job status |
 | `openclaw nodes status` / `openclaw nodes describe --node <id>` | iOS/Android node status |
@@ -311,6 +315,7 @@ After adding/changing sandbox config, always run `openclaw sandbox recreate --ag
 - Suggesting a channel/plugin config from memory — channel config surfaces change between releases.
 - Skipping `openclaw doctor` before restart; an invalid config prevents the gateway from starting and the user will think you broke it.
 - Reusing `gateway.auth.token` as `hooks.token`. They must differ.
+- Setting `plugins.allow` just to silence the "plugins.allow is empty; discovered non-bundled plugins may auto-load" warning. `allow` is a **restrictive** allowlist — once set, ONLY the listed ids load, silently disabling every stock plugin you left out (a default install has ~50). Check `openclaw plugins list --enabled` first; if you really want it, the list must enumerate every plugin you depend on. To block a specific plugin, use `plugins.deny` instead.
 - Using `allowUnsafeExternalContent` anywhere outside of debugging.
 - Re-installing OpenClaw to "fix" a config issue before running `openclaw doctor --fix`.
 

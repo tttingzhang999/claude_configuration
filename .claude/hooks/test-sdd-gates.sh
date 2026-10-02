@@ -15,6 +15,9 @@ expect() { # expect <want-exit> <got-exit> <label>
   if [ "$1" = "$2" ]; then ok "$3"; else bad "$3 (want exit $1, got $2)"; fi
 }
 
+# Keep installed interpreter/dependency caches visible after HOME isolation.
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$(uv cache dir)}"
+export UV_PYTHON_INSTALL_DIR="${UV_PYTHON_INSTALL_DIR:-$(uv python dir)}"
 SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"' EXIT
 export HOME="$SANDBOX"
@@ -46,12 +49,49 @@ expect 0 $? "B is NOT blocked by A's marker (the collision bug)"
 echo "$(edit_payload "$SID_A" "$SANDBOX/vault/proposal.md")" | bash "$HOOKS/sdd-gate-pretooluse.sh" 2>/dev/null
 expect 0 $? "edits outside repo_path stay allowed"
 
+echo "== Current proposal approval and worktree scope =="
+mkdir -p "$SANDBOX/change" "$SANDBOX/worktree"
+printf '%s\n' '---' 'design_approved: false' '---' > "$SANDBOX/change/proposal.md"
+cat >> "$HOME/.claude/sdd-active-$SID_A" <<EOF
+sdd_path=$SANDBOX/change
+worktree_path=$SANDBOX/worktree
+EOF
+# A stale cached approval must not override the actual proposal.
+sed 's/design_approved=false/design_approved=true/' "$HOME/.claude/sdd-active-$SID_A" > "$SANDBOX/marker"
+cp "$SANDBOX/marker" "$HOME/.claude/sdd-active-$SID_A"
+echo "$(edit_payload "$SID_A" "$SANDBOX/worktree/src/x.py")" | bash "$HOOKS/sdd-gate-pretooluse.sh" 2>/dev/null
+expect 2 $? "revoked approval blocks edits in a registered worktree despite cached true"
+printf '%s\n' '---' 'design_approved: true' '---' > "$SANDBOX/change/proposal.md"
+echo "$(edit_payload "$SID_A" "$SANDBOX/worktree/src/x.py")" | bash "$HOOKS/sdd-gate-pretooluse.sh" 2>/dev/null
+expect 0 $? "current approved proposal permits worktree edits"
+printf '%s\n' 'broken metadata' > "$SANDBOX/change/proposal.md"
+echo "$(edit_payload "$SID_A" "$SANDBOX/worktree/src/x.py")" | bash "$HOOKS/sdd-gate-pretooluse.sh" 2>/dev/null
+expect 2 $? "unreadable approval fails closed only inside scoped active work"
+echo "$(edit_payload "$SID_A" "$SANDBOX/unrelated.txt")" | bash "$HOOKS/sdd-gate-pretooluse.sh" 2>/dev/null
+expect 0 $? "bad proposal does not block unrelated files"
+
+echo "== PostToolUse finds the change root for nested specs =="
+mkdir -p "$SANDBOX/vault/.claude/scripts" "$SANDBOX/vault/SDD/TEST-2/specs/domain"
+cp "$HOOKS/../scripts/validate_sdd.py" "$SANDBOX/vault/.claude/scripts/validate_sdd.py"
+printf '%s\n' '---' 'type: proposal' 'ticket: TEST-2' 'title: Fixture' 'propose_tier: unit' 'status: proposed' 'design_approved: false' '---' > "$SANDBOX/vault/SDD/TEST-2/proposal.md"
+printf '%s\n' '- [~] 1.1 Missing tier' > "$SANDBOX/vault/SDD/TEST-2/tasks.md"
+echo "$(edit_payload "$SID_A" "$SANDBOX/vault/SDD/TEST-2/specs/domain/export.md")" | bash "$HOOKS/sdd-validate-posttooluse.sh" 2> "$SANDBOX/post.log"
+expect 0 $? "draft feedback remains informational"
+if grep -q 'tasks.md:L1' "$SANDBOX/post.log"; then
+  ok "nested spec edit validates the owning change's tasks"
+else
+  bad "nested spec edit failed to locate owning change"
+fi
+
 echo "== Stop gate: per-session isolation =="
 printf '{"session_id":"%s"}' "$SID_A" | bash "$HOOKS/sdd-gate-stop.sh" 2>/dev/null
 expect 2 $? "A cannot stop on its own red tests"
 
 printf '{"session_id":"%s"}' "$SID_B" | bash "$HOOKS/sdd-gate-stop.sh" 2>/dev/null
 expect 0 $? "B can stop while A is red"
+
+printf '{"session_id":"%s","stop_hook_active":true}' "$SID_A" | bash "$HOOKS/sdd-gate-stop.sh" 2>/dev/null
+expect 0 $? "A's retry after one block is let through (no stop-hook loop)"
 
 echo "== pr-status backstop: per-ticket, all markers scanned =="
 for t in TEST-9 TEST-8; do

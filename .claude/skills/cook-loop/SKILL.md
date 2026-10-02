@@ -36,9 +36,6 @@ model: sonnet
 
 ## `tick` 流程
 
-> [!important] profile 守門（每個 tick 開頭先做一次）
-> `install.sh` 依 `PROFILE=work|personal` 決定裝哪些 skill，所以本機不一定備齊 cook-loop 會用到的子 skill。tick 開始前先列出 `~/.claude/skills/` 的實際內容，**只對存在的子 skill 發 Skill tool 呼叫**：缺 `cook-meeting` 就跳過 Step 2 的 meeting 補跑，缺 `cook-messages` 就跳過 Step 2.5 / 2.6，缺 `cook-progress` 就跳過 Step 2.7，缺 `promptlingo` 就跳過 promptlingo 補跑與 Morning Brief 的複習字區塊。跳過的步驟在 Step 5 回報成 `<步驟>: 本機未安裝（PROFILE 設定）`，**不算失敗、不寫 `_log.md`、不影響 checkpoint**。
-
 > [!important] staging 模型
 > cook-meeting / cook-messages **不再直接寫 vault**,而是把產出放進 `_staging/`(`reviewed: false`)。機器控制欄位藏在 body 的 `<!--cook-staging ... -->` 註解裡,frontmatter 只留 `reviewed`,所以 Obsidian Properties 面板乾淨。user 在 Obsidian review、把 `reviewed` 翻成 `true` 後,由 `cook-staging` 正式寫入並刪 staging 檔。tick 開頭(Step 0)先 flush 上次審好的。**只有 promptlingo 仍直接寫 vault。**
 

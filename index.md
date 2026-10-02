@@ -12,7 +12,7 @@
 | **01 Work/**             | 工作專案（projects / meetings / research） | —                                                     |
 | **02 Knowledge/**        | 知識管理（Wiki Layer，LLM 維護）           | [[index.base]]                                        |
 | **03 Writing/**          | 個人文章（drafts / workspace / blog）      | [[03 Writing/writing-board.base\|writing-board.base]] |
-| **04 English Learning/** | promptlingo 每日報告 + 單字 + 句型         | [[english-board]] · [[vocab]] · [[patterns]]          |
+| **04 English Learning/** | promptlingo 每日報告 + 單字 + 語法分類     | [[english-board.base]] · [[Glossary Index]] · [[grammar.base]] |
 | **\_raw/**               | Raw Sources（不可修改原始素材）            | —                                                     |
 | **archived/**            | 舊內容封存                                 | —                                                     |
 

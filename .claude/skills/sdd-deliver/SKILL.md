@@ -1,6 +1,7 @@
 ---
 name: sdd-deliver
-description: Spec-Driven Development, Stages 5–6. The delivery orchestrator for a verified change. Two phases. DELIVER (agent, then stops): push the feature branch `sdd/<ticket>`, open a DRAFT PR (never merge, never push main), transition Jira via `jira-automation` (delivery route only), run the `/brief-back` ownership ritual, then the write-back checkpoint (Action Items via `cook-progress` + a learning capture with human approval). Bumps status `verified → delivered` and arms a `~/.claude/sdd-delivered-<ticket>` marker. FINALIZE (`--finalize`, user-triggered after the human merges the PR): confirm the remote PR is MERGED, then sync the base branch locally and remove the feature worktree. Runs on `status: verified`. Triggers: "deliver this SDD", "ship it", "open the PR", "sdd deliver", "交付這張票", `/sdd-deliver`; `--finalize` = post-merge cleanup; `--list` = show deliverable changes.
+description: >-
+  Deliver a verified SDD change through a draft PR, reusing an existing open PR after rework. Check review freshness, preserve durable PR identity, and run the human learning checkpoint. --finalize confirms merge, synchronizes canonical specs only for opted-in projects, and cleans up safely. Triggers: sdd deliver, ship it, open the PR, 交付這張票. Never merges a PR.
 argument-hint: "[<project>] [<ticket>] [--finalize] [--list]"
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, TodoWrite, Agent
 model: inherit
@@ -50,22 +51,29 @@ No marker → the hook no-ops. Manual disarm: `rm ~/.claude/sdd-delivered-<ticke
 
 Let `VAULT_ROOT = {base_url}` — resolve `{base_url}` via `rules/00-machine-paths.md` before passing any path to a tool.
 
+Read `.claude/skills/sdd-propose/references/planning-contract.md` on entry for artifact applicability, shared validation/task parsing, review freshness, and durable PR identity. Its `skip_specs` exception applies wherever this skill says four-pack/specs. Read-only list/status modes do not advance work. For backward transitions or plan edits, use that reference's `update-flow.md`; do not bypass phase ownership.
+
 ### Step 0 — Locate the change, repo, and feature branch
 
 1. **PROJECT + ticket**: from `$ARGUMENTS` / conversation / cwd; if unsure → `AskUserQuestion`.
 2. **SDD folder** = `01 Work/projects/<PROJECT>/SDD/<ticket>-<slug>/`. Read the four-pack + `review.md`.
 3. **Phase**: `--finalize` → jump to FINALIZE. Otherwise DELIVER, which requires `status: verified` (review passed). Any other status → say what's pending and stop.
 4. **repo_path** via `repo-router`; **feature branch** = `sdd/<ticket>`, find its worktree; **base_branch** = the branch it was cut from (default `main`; confirm from git).
-5. `--list`: Glob proposals with `status: verified` or `delivered`, print them, then **stop**.
+5. If status=archived, report completion read-only; never replay old deltas.
+6. `--list`: Glob proposals with `status: verified` or `delivered`, print them, then **stop**.
 
 ---
 
 ## DELIVER (agent runs, then stops for the human to merge)
 
-### Step 1 — Push + draft PR + Jira
+### Step 1 — Validate freshness, then push + draft PR + Jira
+
+- Run ready validation and shared task progress; require all tasks complete. Require a clean feature worktree and review.md with reviewed_commit equal to HEAD and plan_fingerprint equal to the current fingerprint. Missing/stale evidence goes back to verify/review or --update per planning-contract.md; do not silently refresh fields. For a pre-upgrade review without these fields, re-review once.
+- Resolve proposal.pr first. If an existing PR is open for this repo/branch, reuse it; if merged, stop re-delivery and reconcile finalize/follow-up work; closed-unmerged requires an explicit decision. Re-read remote PR state before any write.
 
 - Push the feature branch: `git -C "<repo_path>" push -u origin sdd/<ticket>`.
-- Open a **draft** PR against `base_branch`, body built from `review.md` following the vault PR template (`~/.claude/rules/common/git-workflow.md`): `gh -R <repo> pr create --draft --base <base_branch> --head sdd/<ticket> --title "<type>: <ticket> <title>" --body-file <draft>`. (Or `jira-automation` `backfill-pr` route if it produces the same draft PR.)
+- If no PR exists, open a **draft** PR against `base_branch`, body built from `review.md` following the vault PR template (`~/.claude/rules/common/git-workflow.md`): `gh -R <repo> pr create --draft --base <base_branch> --head sdd/<ticket> --title "<type>: <ticket> <title>" --body-file <draft>`. (Or `jira-automation` `backfill-pr` route if it produces the same draft PR.)
+- For an existing open PR, update its description from the new review using a body file; keep its identity and ready/draft state. Persist the returned URL as proposal `pr` BEFORE setting delivered. Do not create duplicate PRs on retry; if a prior creation succeeded before persistence, look up the exact repo/head/base PR first.
 - **Jira** via `jira-automation` (delivery route): transition the ticket to the in-review state and attach the PR link. Never its implement route.
 - Bump `proposal.md` `status`: `verified → delivered`.
 - **Arm the marker** `~/.claude/sdd-delivered-<ticket>` (ticket / repo_path / base_branch / feature_branch / pr).
@@ -98,13 +106,18 @@ Do **not** merge, un-draft, or touch `main`.
 
 ### Step F1 — Confirm the remote PR is MERGED (fail-closed)
 
-Run the gate: `bash "$HOME/.claude/hooks/sdd-pr-status.sh" --check <ticket>` (reads that ticket's marker), or directly `gh -R <repo> pr view <pr> --json state,mergedAt`. Proceed **only if `state == MERGED`**. Anything else (open, closed-unmerged, or can't determine) → refuse and tell the user to merge first. Never sync `main` without positive confirmation.
+Resolve proposal.pr first (fallback to the ticket marker or unambiguous repo/head lookup), then query `gh -R <repo> pr view <pr> --json state,mergedAt,mergeCommit,baseRefName,headRefName`. Verify repo/base identity and merged state; the marker alone is not durable proof. Proceed **only if `state == MERGED`**. Anything else (open, closed-unmerged, or can't determine) → refuse and tell the user to merge first. Never sync `main` without positive confirmation.
 
-### Step F2 — Sync base + clean up
+### Step F2 — Synchronize opted-in canonical specs
+
+Read `references/spec-sync.md`. Preserve legacy behavior for projects without the explicit opt-in; skip_specs means N/A. For opted-in projects capture/recover the baseline and apply the three-way operation checks against merged code. If sync fails, leave delivered and preserve recovery resources. Only after successful applicable sync continue.
+
+### Step F3 — Sync base + clean up
 
 - Update the local base branch: `git -C "<repo_path>" checkout <base_branch> && git -C "<repo_path>" pull` (or fetch + fast-forward). This is the _only_ point `main`/`base` moves — and it's just mirroring the already-merged remote, not a local merge of the feature branch.
 - Remove the feature worktree: `git -C "<repo_path>" worktree remove "<wt_feat>"`; delete the merged branch: `git -C "<repo_path>" branch -d sdd/<ticket>` (local) and optionally `git -C "<repo_path>" push origin --delete sdd/<ticket>`.
-- **Disarm** the marker: `rm ~/.claude/sdd-delivered-<ticket>`.
+- Remove only confirmed clean/recoverable worktrees and merged branches; preserve dirty or unmerged work and report it. Handle squash-merged branches explicitly instead of force-deleting after `branch -d` fails. Missing resources on a retry are already cleaned, not a failure.
+- **Disarm** the marker after cleanup and applicable spec sync succeed: `rm -f ~/.claude/sdd-delivered-<ticket>`.
 - Bump `proposal.md` `status`: `delivered → archived` (the terminal value; never write `done` — it is not a legal status).
 - Report: base branch synced, worktree/branches cleaned, ticket fully closed.
 

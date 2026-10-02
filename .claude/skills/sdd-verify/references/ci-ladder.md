@@ -40,12 +40,12 @@ global `~/.claude/rules/common/testing.md` default (**80%**).
 
 **Behavioral (the rubric)** — for the change's specs, is each of these exercised by a test?
 
-- [ ] **Happy path** — every `#### Scenario:` WHEN/THEN has a passing test.
+- [ ] **Behavior contract** — ADDED/MODIFIED scenarios have passing tests; removal/rename checks follow the operation-aware review rubric. With skip_specs use task outcomes plus regression evidence.
 - [ ] **Error paths** — each failure/rejection the spec names is tested (not just the success case).
 - [ ] **Boundaries** — empty, null/absent, min/max, first/last, off-by-one edges.
 - [ ] **Regression surface** — behavior adjacent to the change still has covering tests (nothing silently broken).
 
-Coverage passes only when **both** the numeric threshold and every rubric line hold.
+Coverage passes when every applicable threshold/rubric check holds. Explicit N/A with a reason is permitted for inapplicable checks, such as numeric code coverage on docs-only work. Missing evidence is Not verified and cannot pass.
 A gap on any rubric line → add a targeted test (Step 4), don't lower the bar.
 
 ## What "red" means (never silence it)

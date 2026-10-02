@@ -1,7 +1,8 @@
 ---
 name: sdd-propose
-description: Spec-Driven Development, Stage 0–1. Turns a ticket or a request into a four-pack of artifacts living in the vault at `01 Work/projects/<PROJECT>/SDD/<ticket>-<slug>/` (proposal → specs → design → tasks), and assigns the propose tier (CI depth) plus a per-task task tier (model). Covers Stage 0 explore (think, don't implement; map the gap between current code and spec; ASCII diagrams to frame the problem) and Stage 1 propose (produce the four-pack, ratify the goal, N approaches + trade-offs, checkable acceptance criteria, a TDD task list). Triggers: "open an SDD", "propose a change", "write a proposal/design for this ticket", "plan this feature", "sdd propose", "開一張 SDD", "幫這張票做提案", `/sdd-propose`; `--list` / `--status <ticket>` = scan mode; `--explore` = Stage 0 only.
-argument-hint: "[<project>] [<ticket|description>] [--explore] [--list] [--status <ticket>]"
+description: >-
+  Plan or revise an SDD change in the Obsidian vault. Explore the real repo, write proposal/specs/design/tasks, and assign CI depth and task models. Use --update to reconcile an existing plan and invalidate stale approval; use --explore for discussion only. Handles explicit skip_specs for changes without behavior changes. Triggers: sdd propose, plan this feature, 開一張 SDD, 幫這張票做提案. Never implements application code.
+argument-hint: "[<project>] [<ticket|description>] [--explore] [--update] [--list] [--status <ticket>]"
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, TodoWrite
 model: inherit
 ---
@@ -28,31 +29,34 @@ Turn a ticket or a request into an SDD four-pack living in the vault, ready for 
 - `/sdd-propose --list` — scan every project's SDD, list each one's status + next step, then stop
 - `/sdd-propose --status <ticket>` — report a single change's chain state + next step, then stop
 - `/sdd-propose ... --explore` — Stage 0 only (thinking partner); do not produce the four-pack
+- `/sdd-propose <project> <ticket> --update` — follow `references/update-flow.md` instead of the new-proposal flow
 - Natural language: "open an SDD", "write a proposal/design for this ticket", "propose a change", "plan this feature", "開一張 SDD", "幫這張票做提案", "sdd propose"
 
-## The fixed linear chain (core mental model)
+## Planning order and completeness
 
 ```
 proposal.md  →  specs/<capability>.md  →  design.md  →  tasks.md
 ```
 
-**"The first missing file is the next step."** On every entry, scan the SDD folder to decide the chain state:
+Use this order to draft ordinary changes. It does not prove completeness: compare every declared capability to its spec. With explicit `skip_specs: true`, the specs step is intentionally N/A. For existing-plan revisions use --update. On entry, scan artifacts and apply the shared contract:
 
 | Present                        | Next step                                                                       |
 | ------------------------------ | ------------------------------------------------------------------------------- |
 | (empty)                        | proposal                                                                        |
 | proposal.md                    | specs                                                                           |
-| proposal.md + specs/ (≥1 file) | design                                                                          |
+| proposal.md + all declared specs (or explicit skip) | design                                                                          |
 | + design.md                    | tasks                                                                           |
-| all four                       | proposal complete → hand to apply (M4); a human flips `design_approved` to true |
+| all applicable artifacts       | proposal complete → hand to apply (M4); a human flips `design_approved` to true |
 
-`specs/` counts as "present" when the directory exists and holds at least one `*.md`.
+`specs/` is ready only when every declared capability has its corresponding valid delta; a single matching file is insufficient. An explicit valid skip_specs opt-out needs no specs.
 
 ---
 
 ## Flow
 
 Let `VAULT_ROOT = {base_url}` — resolve `{base_url}` via `rules/00-machine-paths.md` before passing any path to a tool.
+
+Read `.claude/skills/sdd-propose/references/planning-contract.md` on entry for artifact applicability, shared validation/task parsing, review freshness, and durable PR identity. Its `skip_specs` exception applies wherever this skill says four-pack/specs. Read-only list/status modes do not advance work. For backward transitions or plan edits, use that reference's `update-flow.md`; do not bypass phase ownership.
 
 ### Step 0 — Locate (resolve project / repo / ticket / chain state)
 
@@ -64,7 +68,7 @@ Let `VAULT_ROOT = {base_url}` — resolve `{base_url}` via `rules/00-machine-pat
    - A Jira key is given (e.g. `PROJ-101`) → read the ticket (Atlassian MCP or `jira-automation`) for its title / description / acceptance criteria.
    - Only a description → agree a ticket key with the user (no formal ticket → use `<PROJECT-UPPER>-<short>` or ask the user for one).
    - `slug` = kebab-case of the title. **SDD folder** = `01 Work/projects/<PROJECT>/SDD/<ticket>-<slug>/`.
-4. **Scan the chain state**: Glob that folder → decide the next step per the table above.
+4. **Scan the chain state**: Glob that folder and compare capabilities against specs using the shared contract. If --update was requested, read `references/update-flow.md`, execute it, and stop this new-proposal flow. For opted-in canonical-spec projects, read `../sdd-deliver/references/spec-sync.md` and capture/recover baselines before authoring deltas.
    - Folder exists with partial artifacts → **resume** at the unfinished step (don't rewrite finished ones unless asked).
    - `--list`: Glob `01 Work/projects/*/SDD/*/proposal.md`, Read each frontmatter, print a table (ticket / title / status / design_approved / next step), then **stop**.
    - `--status <ticket>`: report only that change's chain state + next step, then **stop**.
@@ -76,7 +80,7 @@ Let `VAULT_ROOT = {base_url}` — resolve `{base_url}` via `rules/00-machine-pat
 - Read the Jira ticket; read the **real repo's code** (use the repo path from Step 0; Grep/Read for relevant implementations and integration points); read existing vault `SDD/`, `keypoint/`, and specs.
 - Map the gap between **current implementation vs desired**, using ASCII diagrams / comparison tables to frame the problem clearly.
 - Use `AskUserQuestion` (open-ended, multiple rounds allowed) to converge the problem definition with the user; challenge assumptions.
-- **Convergence condition**: once the problem, scope, and definition of success are clear → summarize in a paragraph and ask the user "ready for me to write the proposal?" Proceed to Step 2 only on their go-ahead.
+- **Convergence condition**: once the problem, scope, and definition of success are clear, summarize and proceed within existing authorization. If the user only requested exploration, offer the concrete capture scope and wait for their go-ahead. Do not re-ask an already authorized proposal request.
 - `--explore` mode: stop here; do not produce the four-pack (but you may capture crystallized thinking into an existing artifact if the user asks).
 
 > [!tip] When to skip Stage 0
@@ -89,14 +93,14 @@ Let `VAULT_ROOT = {base_url}` — resolve `{base_url}` via `rules/00-machine-pat
 Red-line reminder: the `instruction` text in `references/four-pack.md` is a **constraint for you**, not content to copy — don't paste the guidance into the artifact.
 
 1. **proposal.md** — Why / What Changes / Capabilities (split New·Modified) / Impact.
-   - **Ratify the GOAL**: when the proposal converges, write the ticket's goal in one sentence and ask the user to confirm it explicitly. This is the **drift anchor** for every later round — run a drift check when producing specs/design/tasks ("did this step drift from the goal?"; if so, report it).
+   - **Ratify the GOAL**: write the ticket's goal in one sentence, using the already-confirmed request; ask only if it remains unresolved. This is the **drift anchor** for every later round — run a drift check when producing specs/design/tasks ("did this step drift from the goal?"; if so, report it).
    - Fill the **propose tier** here (see Step 3) and the frontmatter (template below).
 2. **specs/<capability>.md** — one file per New/Modified capability in the proposal. Delta format `## ADDED/MODIFIED/REMOVED/RENAMED Requirements` → `### Requirement:` (SHALL/MUST) → `#### Scenario:` (**exactly 4 `#`**) in WHEN/THEN form.
-   - These scenarios **are the acceptance criteria**. Once produced, report them back to the user as a **checkable checklist** and confirm each (the criteria are M5 review's re-check list).
+   - These scenarios **are the acceptance criteria**. Once produced, report the applicable operation-aware criteria as a **checkable checklist**; ask only about unresolved criteria (the criteria are M5 review's re-check list).
 3. **design.md** — Context / Goals·Non-Goals / Decisions / Risks·Trade-offs (/ Migration / Open Questions as needed).
    - **Decisions must give N options + trade-offs** (why X over Y), not a flat narrative. A non-trivial flow gets a mermaid diagram (when a node links to a note, add `class X internal-link;`).
 4. **tasks.md** — `## N <group>` + `- [ ] N.M \`[tier]\` <description>`.
-   - **TDD ordering**: write the failing test first (RED) → implement to green (GREEN) → run the tests to confirm. Bake the tests in here.
+   - **Task contract**: each behavior task contains RED→GREEN and named verification; each group includes its own required tests/docs. Declare group dependencies; final groups are for integration only. Non-behavior tasks use their own verification.
    - **Tag every task with a task tier** (see Step 3), for M4 apply to spawn subagents.
 
 Then scaffold one **companion** file (not part of the validated four-pack):
@@ -146,12 +150,10 @@ Against [[Coding Conventions]]'s Simplicity First, self-check each item and repo
 - Error handling for impossible scenarios?
 - 200 lines that could be 50?
 
-> If the machine has the `ponytail` plugin (an over-engineering-focused review), you may also run it; otherwise use the inline checklist above — **don't hard-depend on the plugin**. Block and report at least one speculative design, or state plainly "no over-engineering in this version."
-
 ### Step 5 — Schema validation (the only script you may run)
 
 ```bash
-uv run .claude/scripts/validate_sdd.py "01 Work/projects/<PROJECT>/SDD/<ticket>-<slug>"
+uv run .claude/scripts/validate_sdd.py "01 Work/projects/<PROJECT>/SDD/<ticket>-<slug>" --mode ready
 ```
 
 Any `ERROR` **must be fixed** before proceeding (missing required field / bad propose_tier or status value / task missing its tier). A `WARN` (e.g. jira still a placeholder) is tolerable until a real ticket key exists.
@@ -191,7 +193,7 @@ Output:
 
 | Situation                                          | Handling                                                                                                            |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Folder exists with all four files                  | Report "proposal already complete" + chain state; ask whether to edit one file (`update`) or hand straight to apply |
+| Applicable artifacts exist | Check capability coverage and ready validation; for revisions use --update; otherwise report approval/next phase |
 | Only a description, no ticket key                  | After Stage 0 converges, agree a ticket key with the user before creating the folder                                |
 | Repo not registered in repos.yaml                  | Mark "conventions unknown"; ask the user in Stage 0 / defer to vault specs; **create no config**                    |
 | Capability is "modify existing behavior"           | Use `## MODIFIED Requirements` in specs, **with the full updated content** (never a partial diff fragment)          |

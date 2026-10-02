@@ -1,6 +1,6 @@
 # Style Guide — Core（生成端）
 
-> 用途：階段 3 初稿生成時載入。這份檔案只放「要對齊什麼」（正例）；「要避開什麼」（禁用詞、Rule A–K）在 `style-guide-verify.md`，由階段 4 的 critique agent 執行，生成時不需要讀。
+> 用途：撰寫初稿時載入。這份檔案只放「要對齊什麼」（正例）；「要避開什麼」（禁用詞、Rule A–K）在 `style-guide-verify.md`，校稿時按需參考，生成時不需要讀。
 
 ## 核心定位
 

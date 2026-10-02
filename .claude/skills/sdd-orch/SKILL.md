@@ -1,7 +1,7 @@
 ---
 name: sdd-orch
 description: >-
-  Spec-Driven Development pipeline driver. A thin orchestrator that runs a ticket through the whole SDD pipeline (propose → apply → verify → review → deliver → finalize): it reads the single source of truth — `proposal.md`'s `status` + `design_approved` — decides the current phase, dispatches the matching phase skill, then re-reads status and continues. Machine phases run automatically in order with no skipping; it pauses at exactly the two human gates (design sign-off, PR merge) and resumes automatically the next time it is invoked because status IS the resume token. It sequences the five phase skills but changes none of them. Triggers: "orchestrate this SDD", "run the whole SDD pipeline", "drive this ticket", "sdd orch", "跑完整流程 / 一路跑到底 / 接續這張票", `/sdd-orch`; `--status <ticket>` = report phase + next step then stop; `--list` = scan every project's SDD and print each one's phase + next step.
+  Drive an SDD ticket through propose, apply, verify, review, deliver and finalize by dispatching the owning skills. Read current proposal state on every entry, honor artifact applicability, and route explicit repair returns with bounded retries. Stop for design sign-off, PR merge, or unresolved blockers. Triggers: sdd orch, run the whole SDD pipeline, 跑完整流程, 接續這張票. --list and --status are read-only.
 argument-hint: "[<project>] [<ticket|description>] [--status <ticket>] [--list]"
 allowed-tools: Read, Bash, Glob, Grep, AskUserQuestion, TodoWrite, Agent, Skill
 model: inherit
@@ -56,11 +56,13 @@ The pipeline driver: read where the ticket is in the SDD state machine, run the 
 
 Let `VAULT_ROOT = {base_url}` — resolve `{base_url}` via `rules/00-machine-paths.md` before passing any path to a tool.
 
+Read `.claude/skills/sdd-propose/references/planning-contract.md` on entry for artifact applicability, shared validation/task parsing, review freshness, and durable PR identity. Its `skip_specs` exception applies wherever this skill says four-pack/specs. Read-only list/status modes do not advance work. For backward transitions or plan edits, use that reference's `update-flow.md`; do not bypass phase ownership.
+
 ### Step 0 — Locate + read the state
 
 1. **PROJECT + ticket**: from `$ARGUMENTS` / conversation / cwd; if unsure → `AskUserQuestion` (list subdirs under `01 Work/projects/`, excluding `_template`).
 2. **SDD folder** = `01 Work/projects/<PROJECT>/SDD/<ticket>-<slug>/`. Glob it:
-   - Missing, or four-pack incomplete (need `proposal.md`, `specs/*.md` ≥1, `design.md`, `tasks.md`) → phase = **propose**.
+   - Missing or applicable planning artifacts incomplete → phase = propose. Use the shared ready validator; skip_specs intentionally omits specs, and every declared capability otherwise needs a spec. Do not route a valid removal/rename-only change back to propose for lacking new-behavior scenarios.
    - Complete → Read `proposal.md` frontmatter: `status`, `design_approved`.
 3. **Compute the phase** from the state-machine table.
 4. `--status <ticket>`: report the phase + the single next step, then **stop**.
@@ -78,12 +80,13 @@ Repeat until a human gate or the terminal state:
 2. **If the phase is a human gate** → report exactly what to do and **stop** (see Step 3).
 3. **Else dispatch the phase skill** by its run-mode:
    - **propose / apply / deliver → inline** via the `Skill` tool (`sdd-propose` / `sdd-apply` / `sdd-deliver`). They own their own subagents, worktrees, and markers; let them run to completion.
-   - **verify / review → independent subagent** via the `Agent` tool, so each gets the clean session it requires. Prompt the subagent:
+   - **verify / review → independent subagent** via the `Agent` tool, so each gets the clean session it requires. **Always pass `model` explicitly — never let it inherit.** The driver session runs on the most expensive tier; the phases must not: `sdd-verify` → `model: "sonnet"` (deterministic CI plus gap-filling tests), `sdd-review` → `model: "opus"` (spec judgement). Prompt the subagent:
      > Read `~/.claude/skills/sdd-<phase>/SKILL.md` and execute it end-to-end for project `<PROJECT>`, ticket `<ticket>`. Run in the feature-branch worktree for `sdd/<ticket>` (the skill re-derives it). Do only what that skill says; report the final `status` you left in `proposal.md` and any blocker.
 4. **After the phase returns, re-read `status`.**
    - **Advanced as expected** → reset the failure counter, loop.
-   - **Did not advance, or the phase reported a blocker / red / open CRITICAL** → **STOP**. Report which phase, what it found, and the exact blocker. Do **not** re-dispatch blindly (max 3 consecutive no-progress dispatches of the _same_ phase, per the global max-retries-3; usually stop on the first genuine blocker). Never try to fix it yourself.
-5. **`delivered` special case**: before treating it as the PR-merge gate, check the PR state — `gh -R <repo> pr view <pr> --json state` (repo/pr from the `~/.claude/sdd-delivered-<ticket>` marker or `git`/`gh` lookup). `MERGED` → dispatch `sdd-deliver --finalize` inline; anything else → it's the human gate, stop.
+   - **Moved backward for repair under update-flow.md** → report the return phase and dispatch only if the owning phase explicitly handed it back with an actionable repair and no unresolved question. Count repeated same-failure returns toward the max-3 retry limit; a state change alone does not reset it.
+   - **Did not advance, or an unresolved blocker / red / open CRITICAL remains** → **STOP**. Report which phase, what it found, and the exact blocker. Do **not** re-dispatch blindly (max 3 consecutive no-progress dispatches of the _same_ phase, per the global max-retries-3; usually stop on the first genuine blocker). Never try to fix it yourself.
+5. **`delivered` special case**: before treating it as the PR-merge gate, check the PR state — `gh -R <repo> pr view <pr> --json state` (PR identity from proposal.pr first, then marker or unambiguous git/gh lookup). `MERGED` → dispatch `sdd-deliver --finalize` inline; anything else → it's the human gate, stop.
 
 ### Step 3 — Stopping at a human gate (self-prompt contract)
 
@@ -92,7 +95,7 @@ Stop cleanly and print the resume instruction. Two gates:
 - **Sign-off** (`design_approved: false`):
   > Design awaits your sign-off. Set `design_approved: true` in `proposal.md`, then say "continue" (same session) or re-run `/sdd-orch <project> <ticket>`. I will pick up at apply.
 - **PR merge** (`status: delivered`, PR not merged):
-  > Draft PR is open (`<url>`). Review and merge it on GitHub, then say "merged" (same session) or re-run `/sdd-orch <project> <ticket> --finalize`. I will finalize (confirm MERGED fail-closed → sync base → clean up).
+  > Draft PR is open (`<url>`). Review and merge it on GitHub, then say "merged" (same session) or re-run `/sdd-orch <project> <ticket> --finalize`. I will finalize (confirm MERGED → opted-in spec sync → sync base and clean up).
 
 Because the phase is always recomputed from `status`, resuming needs no memory of this run — the same command (or a "continue") re-enters the loop exactly where it left off.
 
@@ -106,7 +109,7 @@ When the pipeline reaches done (post-finalize): report the phases run this sessi
 
 - Dispatch only; never do a phase's work. No app code, no SDD artifact writes, no `status` bumps by the driver.
 - Phase decided solely by reading `proposal.md` — idempotent, resumable, same logic for first-run / same-session-continue / cross-session re-run.
-- verify & review always as independent subagents (clean session); apply & deliver inline (they manage their own isolation).
+- verify & review always as independent subagents (clean session) with an explicit `model` (sonnet / opus); apply & deliver inline (they manage their own isolation). Only the driver itself runs on the session's model.
 - Stop at human gates; never fake sign-off, never merge a PR. Finalize only on fail-closed MERGED confirmation (delegated to `sdd-deliver --finalize`).
 - On any blocker/red/no-progress, STOP and report — don't thrash, don't silence (max-retries-3). The phase skills already own "no bypass to force green".
 - Converse in the user's language; the phase skills keep artifact content in English.
