@@ -1,101 +1,42 @@
 ---
 name: write-article
-description: Generates blog articles that match the author's personal writing style through a human-gated iterative pipeline. Use when the user provides a topic, outline, or raw material and wants an article co-written — the skill drives outline → material decisions → draft → critique loops, with human approval gates between stages.
-argument-hint: [topic or outline]
-allowed-tools: Read, Grep, Glob, Write, Edit, WebSearch, WebFetch, Agent, mcp__context7__resolve-library-id, mcp__context7__query-docs
+description: 協助 Your Name 在 Obsidian 撰寫、續寫、修改或校稿文章；依現有原稿直接進入需要的步驟，要求發布時交接 cook-blog-publish。
 ---
 
-# Write Article Skill
+# write-article
 
-幫 Your Name 寫個人 blog 文章 — 人工掌舵、AI 執行的迭代管線。產出必須像 Your Name 親自寫的。絕對不能讀起來像 ChatGPT 寫的，這條凌駕一切。
+文章與圖片的 source of truth 是 Obsidian vault。展開機器路徑 `{base_url}`；
+`03 Writing/drafts/**` 是撰寫中，`03 Writing/blog/**` 是已發布原稿。保留子目錄。
+不在 website repo 寫原稿，不從 repo 取樣文章，不使用 frontmatter `draft`。
 
-本檔只做流程編排，規則與參考資料在 `reference/` 下三份檔案，按階段載入，不要在開頭全讀：
+## 依意圖進入流程
 
-| 檔案                                                          | 內容                                                         | 載入時機                   |
-| ------------------------------------------------------------- | ------------------------------------------------------------ | -------------------------- |
-| `${CLAUDE_SKILL_DIR}/reference/diataxis-article-framework.md` | Diátaxis 型別框架：四象限定義、Compass 判斷、對應階段 0 定位 | 階段 0 決定文章定位時      |
-| `${CLAUDE_SKILL_DIR}/reference/style-guide-core.md`           | 生成端正例與硬規則：定位、幻覺防護、語言、Markdown 格式      | 階段 3 生成時              |
-| `${CLAUDE_SKILL_DIR}/reference/style-guide-verify.md`         | 檢查端負例：Rule A–K 檢查清單                                | 階段 4 傳給 critique agent |
+- 新文章：整理主題、TA、主旨、大綱、素材與圖／程式碼需求成一份提案。
+  等使用者確認方向後寫入 `drafts/<relative-path>.md`。若已有核准大綱，直接續寫。
+- 續寫／局部修改：讀現有 Vault 原稿，直接處理指定範圍，不重走提案。
+- 校稿：讀全文，找錯字、語意、邏輯、技術事實與不自然語氣。
+  使用者要求修改時直接修稿並回報主要改動；只要求建議時不寫檔。
+  有改變論點或缺少素材的問題才提出裁決，不自行補造內容。
+- 已發布文章：原地修改 blog 原稿；除非使用者要求下架重寫，不自動移回 drafts。
+- 完成草稿：仍留在 drafts。只有使用者表達發布意圖才移入 blog，保留相對路徑，
+  隨後讀取並執行相鄰的 `../cook-blog-publish/SKILL.md`。目的地已有文章時先比較，
+  不以同名草稿覆蓋不同版本。發布後不保留另一份可混淆的原稿副本。
 
-產出寫入 `03 Writing/drafts/[slug].md` — 這是整條管線的迭代溝通平台，階段 1–4 的產出與修改都在此檔案更新，階段 5 交付時移至 `03 Writing/blog/`。檔案開頭放一個 callout 標示目前所在階段與待確認事項。
+## 文風與查證
 
-## Important Rules
+- 生成時讀 `reference/style-guide-core.md`，必要時讀
+  `reference/diataxis-article-framework.md` 協助定位；參考文章只從 Vault blog 取樣。
+- 校稿時可參考 `reference/style-guide-verify.md`；需要去除套話時讀
+  `reference/claude-cliches.md`，將它視為編輯參考，不使用配額、評分或強制循環作為交付門檻。
+- 數字、版本、效能與技術主張必須有使用者素材或可查證來源。API／framework 文件用
+  Context7；缺的素材明確標示待補，不虛構。保留 Your Name 的語氣與立場。
+- 不強制 subagent、多輪 critique 或校稿通過紀錄。同步發布時不再校稿。
+- 評語、提案與進度放在對話，不混入正式正文。校稿修改一律回 Vault。
 
-- 數字紀律
-  - 素材裡的數字是全流程唯一可用的數字來源。
-  - 素材不足時根據事實蒐集。可能是程式碼、網頁資訊、官方文件、API 文件、MCP、WebSearch 等。不允許 AI 自行生成數字。
-  - 任何階段都禁止生成無 Reference 的數字、版本號、定價 — 缺就寫 `[待補：___]`。
+## Metadata
 
-## 階段 0：選題、蒐集原始素材
-
-收斂主題 + 蒐集原始素材（經驗描述、真實數據、log、code、截圖）。
-決定文章定位（Tutorial / How-to / Explanation / Reference）、TA、TL;DR。
-
-產出以下內容：
-
-- 選用框架與理由：
-  - 技術文章可參考 `reference/diataxis-article-framework.md`
-  - 非技術文章
-    - Concept：論點驅動、觀點討論、沒有實作細節
-    - Thinking：思考過程、經驗分享、沒有實作細節
-- TA：這篇為哪一個具體的人寫
-- TL;DR：1~2 句話整理文章摘要
-- 預計要使用的原始素材:
-  - 原始素材來源（程式碼、截圖、log、官方文件、網頁文章、MCP 查詢結果等）
-  - 任何引用的數據來源
-  - 任何引用的技術文件或官方文件
-
-完成後等待使用者確認與迭代
-
-## 階段 1：定位與大綱
-
-產出以下內容：
-
-- 大綱：每個 Section 要傳遞的內容、架構、引用的素材等，所有後續實作該 Section 需要用到的所有 Context，使用 Unordered list 整理
-
-完成後等待使用者確認與迭代
-
-## 階段 2：文章內非純文字 Context 設計
-
-對通過的大綱提案，在文章中設計在哪邊建議可以插入哪些非純文字 Context（圖、code、數據盤點），以及放在哪個段落。提案時要說明理由：
-
-- 圖：依「非平凡流程才畫」（分支、狀態機、請求路徑、pipeline）提案位置與型式，Mermaid 優先
-- Code：提案哪些段落放 code（原則：最小但完整可跑 + 預期輸出），實際 code 由使用者提供或指定來源
-- 數據盤點：列出大綱中每個技術錨點及其來源；無來源者標示 `[待補：___]`
-
-完成後等待使用者確認與迭代
-
-## 階段 3：初稿生成
-
-1. 讀 `reference/style-guide-core.md`
-2. 取樣風格錨點：從 `03 Writing/blog/`（或 `content/blog/`）讀至少 3 篇既有文章 — 同類別優先、至少 1 篇跨類別、整篇讀完。輸出觀察筆記（句長分佈、開頭 pattern、段落長度、技術密度）。寫作對齊觀察筆記，core 只當 guardrail
-3. 技術事實驗證：涉及 API 名稱、行為、版本時用 `context7:resolve-library-id` + `context7:query-docs` 或 WebSearch 查證，驗證過的資訊才能寫入
-4. 寫初稿：只用階段 0–2 已確認的素材；缺的數據保留 `[待補]`；每個 section 服務「TL;DR」；重點放句尾、舊資訊開頭新資訊結尾
-
-## 階段 4：批判迭代
-
-啟動 Agent（subagent_type: general-purpose），傳入：
-
-1. 草稿全文
-2. `reference/style-guide-verify.md` 全文
-3. 階段 1 通過的大綱與「TL;DR」
-4. 指令：逐 Rule A–K 檢查，依 `reference/style-guide-verify.md` 輸出格式回報
-
-完成後：**依回報套用改寫 → 更新草稿 → 重跑本階段 critique**，直到 **Rule J(幻覺/未查證事實)為零、且無 CRITICAL** 才進階段 5。每一輪先給使用者變更預覽並等確認再改寫。
-
-## 階段 5：交付
-
-寫入 `03 Writing/blog/[slug].md`（或使用者指定路徑），frontmatter：
-
-```yaml
----
-title: ""
-description: ""
-date: "YYYY-MM-DD"
-tags: []
-category: ""
-author: "Your Name"
-image: ""
-draft: false
----
-```
+發布原稿需 `title`、`description`、`date`（YYYY-MM-DD 字串）、`tags`（字串陣列）、
+`category`。通常也保留 `author: Your Name`、`image: ''`。
+可選 `language` 與 `updatedAt`；僅記錄真實已知日期，不用檔案 mtime 推測發布日期。
+資料夾決定發布狀態，不增加 `status`／`published_at` 等重複狀態。
+圖片可用 `![[filename.png]]` 或標準 Markdown；原圖留在 Vault，命名整理是寫作選項。

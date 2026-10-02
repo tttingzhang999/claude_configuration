@@ -22,9 +22,14 @@ Let `SKILL_DIR` be the directory of this file. The scripts read paths from `scri
 - `LEARNING_DIR` = `<vault>/04 English Learning/` (override with `PROMPTLINGO_LEARNING_DIR`)
 - Reports → `$LEARNING_DIR/reports/<DATE> English Daily.md`
 - Vocab JSON (SRS state) → `$LEARNING_DIR/data/vocab.json`
-- Patterns JSON → `$LEARNING_DIR/data/patterns.json`
-- Vocab notes (projected) → `$LEARNING_DIR/vocab/<word>.md`
-- Pattern notes (projected) → `$LEARNING_DIR/patterns/<slug>.md`
+- Patterns JSON (grammar categories) → `$LEARNING_DIR/data/patterns.json`
+- Glossary notes → `$LEARNING_DIR/glossary/Glossary <LEVEL>.md` + `Glossary Index.md`
+- Grammar notes → `$LEARNING_DIR/grammar/<中文分類名>.md`
+
+> [!important] Notes are aggregates, never one file per item
+> There is **one note per CEFR level** and **one note per grammar category** — never a
+> note per word or per sentence. `store.py` rebuilds every note from the JSON on each
+> run, so the JSON is the single source of truth. Never write a note by hand.
 
 ## Steps
 
@@ -78,6 +83,43 @@ Pull 8–15 words.
 **3d. Grammar focus (overall)**
 Pick 1–3 grammar points. For each: one example pulled from the day plus one contrast example.
 
+**3e. Assign every pattern a category and a kind**
+
+Each item from 3a + 3b becomes `{category, kind, point, user_wrote, correction}`.
+
+`category` — pick exactly one slug:
+
+| slug | 中文分類 | 收什麼 |
+| --- | --- | --- |
+| `articles-and-determiners` | 冠詞與限定詞 | a / an / the、all the same、漏冠詞 |
+| `agreement-and-number` | 主謂一致與單複數 | a lot of + 複數、these ... need |
+| `tense-and-aspect` | 時態 | 現在完成式、過去式、resume 用的動詞形 |
+| `passive-voice` | 被動語態 | be + p.p.、needs to be done |
+| `questions` | 疑問句與間接問句 | 助動詞、whether / if、選擇疑問句 |
+| `word-form` | 詞性與構詞 | clean up / cleanup、connect / connection |
+| `sentence-boundaries` | 句子切分 | run-on、逗號黏接、命令與疑問混在一句 |
+| `spelling-and-typography` | 拼字與排版 | typo、括號前空格 |
+| `requests-and-instructions` | 提出要求與下指令 | 祈使句、授權、劃出禁區 |
+| `contrast-and-alternatives` | 對比與取捨 | X rather than Y、instead of、why not |
+| `conditions-and-consequences` | 條件、時間與後果 | if / until / since / or we'll |
+| `inquiry-and-assessment` | 探詢與評估 | assess whether、what risks does that expose |
+
+If nothing fits, use `other` — do not invent a slug.
+
+`kind` — `error` if the user wrote English wrongly; `phrase` if it is a wording worth
+acquiring (this includes a Chinese sentence rewritten into model English).
+
+`point` — **name the language feature, never the task.** This is the accumulator key:
+the same `point` string seen again raises its count, which is the whole learning signal.
+
+- Good: `疑問句缺助動詞` · `用 rather than 表達取捨` · `article before consonant sound: an -> a`
+- Bad: `proxy_headers strips auth header on SSO redirect` · `three-layer model of software work`
+  — those describe the work, not the language. Retitle them by their construction.
+- Never put the raw sentence in `point`. The sentence goes in `user_wrote`.
+
+`user_wrote` — the original (Chinese sentence, or the user's wrong English).
+`correction` — the model English sentence.
+
 ### 4. Generate the i+1 short article
 
 Write **one short article, ~150 words**, at `config.level`. Hard rules:
@@ -96,7 +138,12 @@ Output: a single paragraph plus a 2-line `> Coverage: vocab X/X · review Y/5` f
 Build:
 
 ```json
-{ "date": "<YYYY-MM-DD>", "vocab": [...from 3c], "patterns": [...from 3a+3b], "reviewed": ["...the review_words surfaced in 3.5"] }
+{
+  "date": "<YYYY-MM-DD>",
+  "vocab": [{ "word": "...", "cefr": "...", "zh": "...", "pos": "...", "examples": [], "synonyms": [], "antonyms": [] }],
+  "patterns": [{ "category": "questions", "kind": "error", "point": "疑問句缺助動詞", "user_wrote": "ci failed?", "correction": "Did CI fail?" }],
+  "reviewed": ["...the review_words surfaced in 3.5"]
+}
 ```
 
 `reviewed` = the `word` of every `review_words` entry you surfaced in section 3.5.
@@ -115,13 +162,16 @@ PLJSON
 > [!warning] 用 heredoc,不要 `echo '...' |`
 > payload 裡的英文縮寫(`don't`、`it's`)和使用者引號含單引號,用 `echo '...'` 會截斷 shell 字串、腐化 JSON。上面的 quoted heredoc(`<<'PLJSON'`)不做任何展開,單引號原樣送進 stdin。
 
-`store.py` is idempotent (a word already touched today is not advanced twice, so
-re-running a date is safe). It updates `vocab.json` / `patterns.json`, advances the
-reviewed words, then projects each touched entry into a per-entry note (`<word>.md`,
-`<slug>.md`) — so the new vocab and patterns are immediately browsable in Obsidian and
-indexed by `vocab.base` / `patterns.base`.
+`store.py` is idempotent (a word or a `point` already touched today is not advanced
+twice, so re-running a date is safe). It updates `vocab.json` / `patterns.json`,
+advances the reviewed words, then **rebuilds every glossary and grammar note in full**
+from the JSON. `grammar.base` indexes the grammar notes; `Glossary Index.md` is the
+all-levels word table.
 
-To regenerate every note from JSON (e.g. after schema change):
+Check the returned summary. A `warning` field means a `category` slug was not on the
+list above and the items landed in `other` — fix the slug and re-run that date.
+
+To regenerate every note from JSON without merging new data:
 
 ```bash
 uv run "$SKILL_DIR/scripts/store.py" --rebuild-notes

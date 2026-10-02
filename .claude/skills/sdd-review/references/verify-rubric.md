@@ -1,55 +1,78 @@
 # Verify rubric — Completeness / Correctness / Coherence
 
-The three-axis spec review, ported from OpenSpec `workflows/verify-change.ts`
-(the `openspec …` CLI calls removed). It judges the implementation on
-`sdd/<ticket>` against `specs/<capability>.md`, and maps every finding to a
-severity the delivery PR can carry.
+Adapted from OpenSpec v1.13.2 (`db230978`),
+`src/core/templates/workflows/verify-change.ts`. Upstream verification is advisory;
+blocking required `Not verified` checks is this SDD pipeline's own policy.
 
-## The three axes
+## Evidence states
 
-### Completeness — is everything the spec promised actually there?
+For each applicable check report **Passed**, **Failed**, or **Not verified
+(reason)**. Use **Not applicable (reason)** only for intentionally inapplicable
+checks, never for missing/unreadable evidence. A required Failed/Not verified
+check or an open CRITICAL prevents `verified`. N/A is excluded, not counted as a
+pass. A parser returning no requirements is not proof of a removal-only change.
 
-- Every `### Requirement:` has implemented behavior.
-- Every `#### Scenario:` (WHEN/THEN) has a corresponding code path **and** a test that exercises it.
-- No requirement silently dropped; no "TODO / not yet" standing in for a promised behavior.
-- `## ADDED` requirements exist; `## MODIFIED` reflect the new full content; `## REMOVED` are actually gone (with the migration the delta named).
+## Completeness — check the delta operation first
 
-### Correctness — does it do what the spec says?
+| Operation | Required evidence |
+| --- | --- |
+| ADDED | The new requirement is implemented and its scenarios are covered. |
+| MODIFIED | The full updated behavior and scenarios in the delta are implemented; compare the baseline for accidental scenario loss. |
+| REMOVED | The old behavior is gone. Absence is success, not a missing implementation. A reachable path still providing it is CRITICAL. |
+| RENAMED | The TO requirement preserves the baseline FROM behavior and scenarios. Do not require code symbols/files to be renamed or report FROM as missing. |
 
-- Each scenario's THEN holds for its WHEN — verified by reading the code and its test.
-- No behavior contradicts a `SHALL` / `MUST`.
-- Error/failure paths behave as specified, not just the happy path.
-- Boundaries (empty, null, min/max, first/last) match the spec's intent.
+For REMOVED, a name appearing in docs, artifacts, or migration-only code does not
+alone prove the behavior remains. A shared code path that still delivers the old
+behavior does count, even if it also supports an ADDED requirement. Follow the
+migration contract; do not try to make removed scenarios pass again.
 
-### Coherence — does it hang together?
+For RENAMED, read the baseline FROM requirement (or TO if the canonical spec is
+already synced). If TO also has a MODIFIED block, check that block instead. Missing
+baseline evidence is Not verified, not automatic success. Use canonical project
+specs when available; otherwise establish a baseline from merged changes and the
+pre-change code/tests, recording uncertainty rather than treating an active delta
+as current truth.
 
-- Consistent with `design.md` (the chosen approach, not a silently different one).
-- Consistent with the target repo's conventions (its `CLAUDE.md`) — naming, layering, error handling.
-- No internal contradictions, no dead/unreachable paths introduced, no duplicated source of truth.
-- The diff is surgical: every changed line traces to a task/requirement (per Surgical Changes).
+All tasks must be complete according to `validate_sdd.py --tasks-json`. Repo
+instructions/context constrain the work; they are not completion evidence.
 
-## Severity mapping
+## Correctness — operation-aware acceptance criteria
 
-| Severity       | Meaning                                                                          | Effect                                                                  |
-| -------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| **CRITICAL**   | A requirement is unmet, a `SHALL` is violated, or a scenario's behavior is wrong | Leaves its criterion **unchecked** → blocks status `verified`           |
-| **WARNING**    | Risky, ambiguous, or convention-breaking, but no requirement is violated         | Rides in the PR draft for a human to weigh before merge; does not block |
-| **SUGGESTION** | Improvement / cleanup opportunity                                                | Informational only                                                      |
+- Only scenarios under ADDED/MODIFIED enter the new-behavior scenario checklist.
+- Each requires a matching implementation and a test exercising its WHEN/THEN.
+- Check error paths and boundaries actually required by the spec.
+- REMOVED/RENAMED receive explicit operation checks from Completeness, with
+  evidence references, instead of being dropped from acceptance entirely.
+- For a readable removal/rename-only delta, new-behavior mapping and scenario
+  coverage are N/A; operation checks must still pass.
+- With `skip_specs: true`, spec checks are N/A. Check every task's stated outcome
+  and the evidence that externally observable behavior is unchanged. Missing
+  applicable evidence is Not verified. No invented scenarios.
 
-Only CRITICAL blocks — and it blocks **through the acceptance-criteria check**
-(an unmet criterion stays unchecked), not by halting the pipeline. WARNING and
-SUGGESTION never block; the review's value is putting them in front of the human
-at merge time, not stopping the flow.
+## Coherence
 
-## How this feeds the criteria check
+Check the chosen design, repo conventions, contradictory/dead paths, and whether
+each changed line traces to a task/requirement. Report conflicts among repo
+instructions, the approved plan, and explicit user choices; never quietly replace
+one with another. Missing applicable design/code evidence is Not verified.
 
-Each `#### Scenario:` in `specs/<capability>.md` **is** an acceptance criterion.
-A scenario is checked only when Completeness (a test exercises it) and Correctness
-(the behavior matches) both hold. A Coherence-only concern about that scenario is a
-WARNING, not grounds to uncheck a criterion that otherwise passes.
+## Findings and readiness
 
-## Read-only discipline
+| Severity | Meaning | Effect |
+| --- | --- | --- |
+| CRITICAL | Unmet contract, incorrect behavior, or blocking correctness/security finding | Blocks `verified` |
+| WARNING | Non-blocking risk, ambiguity, or convention concern | Include for human review |
+| SUGGESTION | Optional improvement | Informational |
 
-Review reads code and writes only the vault review artifact (`review.md`). It never
-edits target application code — a wanted fix is reported as a finding and handed back
-to `sdd-apply` / `sdd-verify`, never applied from here.
+Keep evidence state separate from severity: missing evidence need not be a proven
+bug, but still prevents a required check passing. Preserve blocking findings from
+code review even when unrelated to a scenario; do not downgrade security findings
+to make the checklist pass.
+
+`review.md` records each criterion/check, evidence state, reason, and code/test
+locations; counts ADDED/MODIFIED separately from confirmed removals/renames. It
+also records the reviewed commit and plan fingerprint (see the skill). Report
+readiness only when all required checks passed and no blocking finding remains.
+
+Review writes only vault evidence and the explicit status/task repair handoff; it never edits application code. Hand fixes to `/sdd-apply` and plan revisions
+to `/sdd-propose --update`; evidence-only follow-up goes to `/sdd-verify`.

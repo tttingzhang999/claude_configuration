@@ -97,3 +97,7 @@ Additional rules — generic, apply to every project (vault-only rules are impor
 @rules/chinese-output.md
 
 Language-scoped rules under `rules/python/` and `rules/typescript/` bind by file extension via their `paths:` frontmatter and load only when a matching file is in play.
+
+## Agent Configuration Source of Truth
+
+All personal skills and coding-agent configuration are maintained in this Obsidian vault's `.claude/` and `.codex/`. Edit the vault originals, never generated home-directory copies. After changing them, run the vault root `install.sh` dry-run, apply it with `DRY_RUN=0`, and verify Claude and Codex resolve to the updated originals. Keep runtime credentials, caches, and machine-local state outside the vault.

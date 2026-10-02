@@ -1,6 +1,7 @@
 ---
 name: sdd-apply
-description: Spec-Driven Development, Stage 2. The apply orchestrator that turns a design-approved SDD four-pack into implemented, test-first code. Reads `tasks.md` from `01 Work/projects/<PROJECT>/SDD/<ticket>-<slug>/`, and runs each task as its own subagent using that task's task tier (`sonnet|opus`) as the model. Each task is test-first (RED → GREEN → refactor → coverage), following `references/apply-loop.md` with the test stack taken from the target repo's CLAUDE.md (language-agnostic). Groups run in parallel, each isolated in its own git worktree, then merged onto a feature branch `sdd/<ticket>` (never `main` — that waits for the remote PR merge). Arms a per-session marker `~/.claude/sdd-active-<session_id>` so the gate hooks enforce "no stopping on red" (and a backstop "no main-tree code before design sign-off"). Only runs when the proposal's `design_approved: true`. Triggers: "apply this SDD", "implement the tasks", "run apply", "sdd apply", "開始實作 / 跑 apply", `/sdd-apply`; `--list` = show applyable changes.
+description: >-
+  Implement an approved SDD plan in isolated feature worktrees. Each behavior task follows TDD; only dependency-ready groups with non-overlapping ownership run in parallel. Reuses existing work on resume, checks current approval, and hands passing changes to sdd-verify. Triggers: sdd apply, implement the tasks, 開始實作, 跑 apply. Never merges the feature branch into main.
 argument-hint: "[<project>] [<ticket>] [--list]"
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion, TodoWrite, Agent
 model: inherit
@@ -37,6 +38,7 @@ design_approved=<true|false>
 repo_path=<abs path to the target repo>
 feature_branch=<sdd/<ticket>, the branch apply integrates onto — never main>
 tests_green=<true|false|empty>
+worktree_path=<integration worktree; repeat this key for every active group worktree>
 ```
 
 `feature_branch` is an informational handoff field (not read by the gate hooks — the gate stays on `tests_green` only). M5 (`sdd-verify` / `sdd-review`) runs in a **clean session** and re-derives the branch as `sdd/<ticket>` from the SDD folder, so it never depends on this marker.
@@ -52,10 +54,12 @@ tests_green=<true|false|empty>
 
 Let `VAULT_ROOT = {base_url}` — resolve `{base_url}` via `rules/00-machine-paths.md` before passing any path to a tool.
 
+Read `.claude/skills/sdd-propose/references/planning-contract.md` on entry for artifact applicability, shared validation/task parsing, review freshness, and durable PR identity. Its `skip_specs` exception applies wherever this skill says four-pack/specs. Read-only list/status modes do not advance work. For backward transitions or plan edits, use that reference's `update-flow.md`; do not bypass phase ownership.
+
 ### Step 0 — Locate the change + the repo
 
 1. **PROJECT + ticket**: from `$ARGUMENTS` / conversation / cwd; if unsure → `AskUserQuestion`.
-2. **SDD folder** = `01 Work/projects/<PROJECT>/SDD/<ticket>-<slug>/`. Confirm the four-pack is complete (`proposal.md`, `specs/` ≥1, `design.md`, `tasks.md`); if not → tell the user to finish it with `sdd-propose`, stop.
+2. **SDD folder** = `01 Work/projects/<PROJECT>/SDD/<ticket>-<slug>/`. Run `validate_sdd.py <folder> --mode ready` and confirm applicable artifacts; if not → tell the user to finish it with `sdd-propose`, stop.
 3. **repo_path**: resolve the real target repo via `repo-router`'s `repos.yaml` (`vault_project == <PROJECT>`). No mapping → **pause and ask** for the repo path (apply must edit real code; don't guess).
 4. `--list`: Glob `01 Work/projects/*/SDD/*/proposal.md`, Read frontmatter, print those with all four files present + `design_approved: true`, then **stop**.
 
@@ -81,7 +85,7 @@ Read `proposal.md` frontmatter `design_approved`:
 
 - Read the four-pack: `proposal.md`, every `specs/*.md`, `design.md`, `tasks.md`.
 - Read the target repo's `CLAUDE.md` (fallback manifests) for the test stack — pass this to every subagent.
-- Parse `tasks.md` into an ordered list: each `- [ ] N.M \`[tier]\` <description>`→`{id, tier, text, done}`. Track them with **TodoWrite**.
+- Run `validate_sdd.py <folder> --tasks-json`; use its line/text/done records as the authoritative task inventory, then read task IDs/tiers/group ownership. Track with **TodoWrite**.
 - If any task lacks a task tier → run `validate_sdd.py` to confirm; fix in the SDD (via sdd-propose) before applying.
 
 ### Step 3 — Arm the marker (approved) + bump status
@@ -103,35 +107,36 @@ Bump `proposal.md` `status`: `approved → applying` (if it was `proposed`, note
 
 **Concurrency model:**
 
-- Each `## N` group is one unit; its tasks are **serial within the group** (RED → GREEN → run share state).
-- **Groups are independent → run in parallel**, each isolated in **its own git worktree** so concurrent edits never collide.
+- Each `## N` group is one unit; tasks are serial within it. Each behavior task contains its own full RED→GREEN cycle; each non-behavior task runs its declared verification.
+- Read each group's `Depends on: none` or `Depends on: 1, 2`. Validate referenced groups and reject cycles. Missing declarations on legacy plans mean serial group order. Only dependency-ready groups with non-overlapping ownership may run in parallel. Create dependent worktrees AFTER prerequisite branches are integrated, from the updated feature branch.
 - Each **task** is one subagent whose model = **that task's task tier**; a group's tasks all operate in that group's worktree. (Verified: the `Agent` tool supports parallel spawning and git-worktree isolation.)
 - **Never touch the developer's main working tree.** All integration lands on a dedicated **feature branch `sdd/<ticket>`**, verified there by M5, and only reaches `main` when the **remote PR is merged** (the human's final button, post-M6) — not by this skill.
 
 **Setup (orchestrator, Bash):**
 
-- Confirm `repo_path` is a git repo. If not → fall back to **serial on a feature branch checked out in a scratch worktree** (no per-group worktrees); still never the main tree. If even that is impossible, pause and ask.
-- Create the feature branch off the current base **without checking it out in the main tree**: `git -C "<repo_path>" branch sdd/<ticket>` (base = current HEAD).
-- Add the **integration worktree** for it: `git -C "<repo_path>" worktree add "<wt_feat>" sdd/<ticket>`.
-- For each group N, branch **off the feature branch**: `git -C "<repo_path>" worktree add "<wt_N>" -b sdd/<ticket>-g<N> sdd/<ticket>`. (Use the **sibling** name `sdd/<ticket>-g<N>`, not `sdd/<ticket>/g<N>` — the latter collides with the feature branch ref `sdd/<ticket>` as a git D/F conflict and fails.)
+- Confirm repo_path is a git repo; otherwise pause. Before scheduling/resuming, re-read approval and PR state: merged changes require a new ticket. Reuse existing feature/group branches and worktrees; inspect dirty work and already-integrated commits, never reset/recreate them blindly.
+- Only if absent, create the feature branch off the agreed base **without checking it out in the main tree**: `git -C "<repo_path>" branch sdd/<ticket>` (base = current HEAD).
+- Reuse its integration worktree, or add one if absent: `git -C "<repo_path>" worktree add "<wt_feat>" sdd/<ticket>`.
+- Register each integration/group path as a separate worktree_path= line in the marker before dispatch. The path-based gate reads current proposal approval and enumerates Git worktrees; it is a backstop, not arbitrary-shell sandboxing.
+- For each ready group N without a reusable branch/worktree, branch **off the current integrated feature branch**: `git -C "<repo_path>" worktree add "<wt_N>" -b sdd/<ticket>-g<N> sdd/<ticket>`. (Use the **sibling** name `sdd/<ticket>-g<N>`, not `sdd/<ticket>/g<N>` — the latter collides with the feature branch ref `sdd/<ticket>` as a git D/F conflict and fails.)
 
 **Run (advance groups concurrently, one task per group at a time):**
 
-1. Launch the current task of every still-running group as **parallel `Agent` calls in a single message** — each with `model` = that task's tier, prompt = the task text + the relevant spec scenario(s) + **its group's worktree path** + the detected test stack + "follow `references/apply-loop.md`; edit only within this worktree." Each returns a compact result (files touched, RED-then-GREEN confirmed, final **green/red**, coverage, any pause reason).
-2. After the batch, the orchestrator runs each group's test command **in that group's worktree** to confirm:
+1. Re-read approval and stop on revocation. Launch the current task of each dependency-ready, non-overlapping group as parallel `Agent` calls — each with `model` = that task's tier, prompt = the task text + the relevant spec scenario(s) + **its group's worktree path** + the detected test stack + "follow `references/apply-loop.md`; you are not alone in the codebase; preserve others' edits; own only the assigned task files inside this worktree." Each returns a compact result (files touched, RED-then-GREEN confirmed, final **green/red**, coverage, any pause reason).
+2. After the batch, the orchestrator runs each group's applicable verification commands **in that group's worktree** to confirm:
    - **green** → mark that task `- [ ]` → `- [x]` in `tasks.md`; reset that group's failure counter; advance the group to its next task.
    - **red / paused** → set marker `tests_green=false`; don't mark done; retry the task once, else surface the pause reason. Increment the group's consecutive-failure counter — **≥ 3 → STOP**: leave `tests_green=false` (the Stop gate blocks a red finish), report each attempt + the blocker, and ask. Do not thrash. (A separate `build-error-resolver` is intentionally shelved — the task subagent already diagnoses and fixes within its own loop.)
 3. Show progress per group: "g<N> task N.M ✓ (tier)".
 
 **Integrate onto the feature branch (never main):**
 
-- When a group is fully green, merge its branch into the **feature branch** from inside the integration worktree: `git -C "<wt_feat>" merge --no-ff sdd/<ticket>-g<N>`; on conflict, resolve serially (or report and pause). Then `git -C "<repo_path>" worktree remove "<wt_N>"`.
-- After all groups merge, run the **full suite** inside `<wt_feat>` (the feature branch) → set marker `tests_green` accordingly.
+- When a group is fully green, ensure its intended changes are committed under the target repo's commit policy (obtain any required approval; do not merge uncommitted work). Then merge its branch into the **feature branch** from inside the integration worktree: `git -C "<wt_feat>" merge --no-ff sdd/<ticket>-g<N>`; on conflict, resolve serially (or report and pause). Then `git -C "<repo_path>" worktree remove "<wt_N>"`.
+- After all groups merge, run the **full applicable verification suite** inside `<wt_feat>` (the feature branch) → set marker `tests_green` accordingly.
 - **Do not merge `sdd/<ticket>` into `main`.** The integration worktree `<wt_feat>` stays alive and is handed to M5 (`sdd-verify` / `sdd-review`), which run there. `main` is untouched until the remote PR merges.
 
 ### Step 5 — Completion + handoff
 
-When every task is `- [x]` and the full suite is green on the feature branch:
+When shared task progress reports every task complete and applicable checks pass on the integrated feature branch:
 
 - Update marker `tests_green=true`, then **disarm**: `rm ~/.claude/sdd-active-$CLAUDE_CODE_SESSION_ID`.
 - Bump `proposal.md` `status`: `applying → verifying` (handoff to M5 CI/Review).
@@ -149,7 +154,7 @@ When every task is `- [x]` and the full suite is green on the feature branch:
 
 - Run only on `design_approved: true`; otherwise arm the gate and refuse.
 - Subagents edit only inside `repo_path`; the orchestrator owns all vault writes (checkboxes, status, marker).
-- Test-first every task; never edit a test to fit the code; never bypass a red light. Max 3 consecutive failures → stop and report (global max-retries-3).
+- Test-first each behavior task; verify non-behavior tasks with their declared outcome; never edit a test to fit the code; never bypass a red light. Max 3 consecutive failures → stop and report (global max-retries-3).
 - Keep the marker truthful at all times (`tests_green` reflects the last run); disarm on clean exit so the gate doesn't linger.
 - No file added to the target repo beyond what the tasks require. Marker stays in `~/.claude/`.
 - English content in artifacts; converse in the user's language.

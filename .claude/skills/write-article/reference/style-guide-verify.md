@@ -6,6 +6,7 @@
 
 - Rule A 禁用詞／禁用片語 · B 動詞三層 · C 證據鏈 vs 情緒鏈 · D 技術名詞錯誤使用 · E 元件指代具體性
 - Rule F Heading 設計 · G 過度口語 · H 輕重緩急 · I 推理跳步 · J `[待補]` 清點 · K 引用堆疊與內化
+- Rule L Claude cliché scan（22 patterns，另檔）
 - 輸出格式（嚴重度排序）
 
 ## Rule A：禁用詞 / 禁用片語
@@ -121,6 +122,16 @@ Rule：把全部 heading 抽出來單獨看，讀者能不能重建這篇文章�
 - 正文中「某某說／某某認為／某某在某書給過建議」式句子超過 2 處 → 標記：觀點要內化成作者自己的論述，具名來源集中到文末「參考資料」
 - 結尾出現「回到開頭／回顧本文」式字面回指 → 標記：首尾呼應靠主題與意象，不寫字面回指
 
+## Rule L：Claude cliché scan
+
+Run after Rule A–K, as a separate sweep. Load `reference/claude-cliches.md` and follow its detection protocol: 22 rhetorical patterns from the source catalog, each with English markers and its Chinese form, plus per-tier budgets.
+
+- Tier 1 (CB, MCS, AE, AHM) has a budget of zero. Every instance is CRITICAL.
+- CB is the wider form of Rule A. Report such a sentence once, under CB, and name Rule A.
+- Read "What this pass must not destroy" before reporting. Substantive contrast teaching, real limitations, calibrated uncertainty, and honest parallel structure are not violations.
+- Report only. The de-cliché rewrite runs as a separate step, driven by the rewrite prompt at the end of `claude-cliches.md`.
+
 ## 輸出格式
 
 1. 問題清單，按嚴重度排序（幻覺類 J > 結構類 F/H/I > 風格類其餘），每項：原句 / Rule / 建議改寫方向
+2. Rule L cliché scan：獨立區塊，格式見 `claude-cliches.md`「Detection protocol」— 先給每個 code 的 count vs budget 表，再列 CRITICAL / WARNING 明細

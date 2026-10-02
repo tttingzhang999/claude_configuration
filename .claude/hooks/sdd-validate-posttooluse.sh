@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # sdd-validate-posttooluse.sh — Stage 0-2 schema feedback (M3/M4, item #16).
 #
-# After an edit to an SDD proposal.md/tasks.md, run the shared validator
+# After an edit to an SDD planning artifact, run the shared validator
 # (validate_sdd.py) on that change folder and surface WARN/ERROR to stderr.
 #
 # INFORMATIONAL ONLY — always exit 0 (never blocks; a half-written four-pack is
@@ -13,13 +13,16 @@ input="$(cat)"
 fp="$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.path // empty' 2>/dev/null)"
 [ -n "$fp" ] || exit 0
 
-# Only react to the two files the validator checks, inside an SDD change folder.
+# React to planning inputs; nested specs still validate their change root.
 case "$fp" in
-  */SDD/*/proposal.md|*/SDD/*/tasks.md) ;;
+  */SDD/*/proposal.md|*/SDD/*/tasks.md|*/SDD/*/design.md|*/SDD/*/specs/*.md|*/SDD/*/baseline/*.md) ;;
   *) exit 0 ;;
 esac
 
-folder="$(dirname "$fp")"
+prefix="${fp%%/SDD/*}"
+relative="${fp#"$prefix"/SDD/}"
+change="${relative%%/*}"
+folder="$prefix/SDD/$change"
 command -v uv >/dev/null 2>&1 || exit 0
 
 # Walk up from the change folder to find the vault's validator (machine-agnostic).
@@ -34,7 +37,7 @@ while [ "$dir" != "/" ] && [ -n "$dir" ]; do
 done
 [ -n "$validator" ] || exit 0
 
-out="$(uv run "$validator" "$folder" 2>&1)" || true
+out="$(uv run "$validator" "$folder" --mode draft 2>&1)" || true
 # Only speak up when there is something to say (ERROR/WARN); stay quiet on clean pass.
 if printf '%s' "$out" | grep -qE '^(ERROR|WARN)'; then
   echo "[sdd-validate] $(basename "$folder"):" >&2

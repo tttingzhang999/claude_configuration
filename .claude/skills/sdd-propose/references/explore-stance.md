@@ -1,6 +1,6 @@
 # Explore stance — Stage 0
 
-Ported from OpenSpec `explore.ts`. This is a **stance, not a workflow**: no fixed
+Aligned with OpenSpec v1.13.2 (`db230978`), `src/core/templates/workflows/explore.ts`. This is a **stance, not a workflow**: no fixed
 steps, no mandatory output. You're a thinking partner helping crystallize the
 problem before any proposal exists.
 
@@ -14,7 +14,8 @@ problem before any proposal exists.
 - **Open threads, not interrogations** — surface several directions, let the user follow what resonates.
 - **Visual** — use ASCII diagrams liberally (state machines, data flows, comparison tables).
 - **Adaptive** — follow interesting threads, pivot on new information.
-- **Grounded** — explore the actual codebase, don't just theorize.
+- **Grounded** — inspect artifacts, source, tests, docs, and config before asking factual questions. Do not ask the user to repeat facts you can verify. State missing/conflicting evidence.
+- **Focused discovery** — ask the next blocking question and explain the decision it unlocks; one at a time unless the user prefers a batch. Stop once the goal is clear. Separate confirmed decisions, proposed defaults, and open questions.
 - **Patient** — let the shape of the problem emerge; don't rush to a conclusion.
 
 ## What you might do
@@ -35,13 +36,15 @@ spikes worth doing first.
 
 ```
       CURRENT vs DESIRED
-      ═══════════════════════════════
+      ===============================
 
-      ┌──────────┐         ┌──────────┐
-      │ today    │────────▶│ target   │
-      │ (no cap) │  gap →   │ (429)    │
-      └──────────┘         └──────────┘
+      +----------+         +----------+
+      | today    |-------->| target   |
+      | (no cap) |  gap     | (429)    |
+      +----------+         +----------+
 ```
+
+Use plain ASCII for aligned text diagrams; Mermaid remains available for design artifacts.
 
 ## Vault awareness (replaces OpenSpec's `openspec list --json`)
 
@@ -74,12 +77,13 @@ give clarity. When things crystallize, summarize briefly:
 **Open questions**: <if any>
 ```
 
-Then ask for the go-ahead: "Ready for me to write the proposal?" — only proceed to
-Stage 1 (the four-pack) once the user says yes.
+If the user already requested capture/proposal creation, perform the authorized artifact work without re-asking. Otherwise offer a concrete capture scope. A yes approves that scope; answering a design question alone does not authorize writes. Ask before expanding the scope.
+
+After capture, name `/sdd-propose` for remaining planning or `/sdd-propose --update` for revisions, and `/sdd-apply` after design sign-off for implementation. Capturing artifacts does not start implementing them.
 
 ## Guardrails
 
 - **Don't implement** — no application code. SDD artifacts are fine.
 - **Don't fake understanding** — if unclear, dig deeper.
-- **Don't auto-capture** — offer to save insights; the user decides.
+- **Don't auto-capture** — honor an explicit capture request or approval of a named scope. Do not repeat an approval already given, and do not create unrequested prerequisites without authorization.
 - **Do visualize, do explore the real codebase, do question assumptions** — including your own.

@@ -24,15 +24,13 @@ last_reviewed: YYYY-MM-DD # optional, used by lint to detect staleness
 ---
 ```
 
-## `03 Writing/**/*.md` (Personal articles, recommended fields)
+## `03 Writing/**/*.md` (Personal articles)
 
-```yaml
----
-title: <title>
-status: draft | workspace | blog
-created: YYYY-MM-DD
-published_at: YYYY-MM-DD # workspace / blog only
-target: workspace | blog | both
-tags: [...]
----
-```
+Folder membership is the only publication state: `drafts/**` is writing;
+`blog/**` is published source. No `draft`, `status`, `target`, or
+`published_at` field duplicates that state. Other Writing folders are not published.
+
+Blog articles require title, description, YYYY-MM-DD string date, string-array tags,
+and category. Author defaults to Your Name; image is optional. Optional language
+and updatedAt describe content, not sync/deployment status. Keep technical sync state
+in the website's generated manifest, and query the deployment provider for live status.

@@ -149,7 +149,7 @@ const context = `PR: ${title}\nBase: ${base}${prNumber ? `\nPR #${prNumber}` : "
 phase("Scout");
 const scout = await agent(
   `You are the scout for a code review. Map this change so reviewers can focus.\n\n${context}\n\nReport languages, change_type, whether the diff aligns with the stated intent (note scope creep or missing pieces), whether CLAUDE.md exists in the repo, and any hotspots reviewers should know.`,
-  { label: "scout", phase: "Scout", schema: SCOUT_SCHEMA },
+  { label: "scout", phase: "Scout", schema: SCOUT_SCHEMA, model: "sonnet" },
 );
 
 const scoutNote = scout
@@ -180,7 +180,7 @@ const perLens = await pipeline(
   (lens) =>
     agent(
       `You are the "${lens.key}" reviewer. Review ONLY this criterion:\n${lens.prompt}\n\n${NOT_FLAG}\n\n${scoutNote}\n\n${context}`,
-      { label: `review:${lens.key}`, phase: "Review", schema: FINDINGS_SCHEMA },
+      { label: `review:${lens.key}`, phase: "Review", schema: FINDINGS_SCHEMA, model: "sonnet" },
     ),
   (review, lens) => {
     const found = (review?.findings || []).filter(Boolean);
@@ -192,7 +192,12 @@ const perLens = await pipeline(
         (f) => () =>
           agent(
             `Adversarially REFUTE this ${f.severity} finding from the "${lens.key}" review. Default to refuted=true if uncertain — the bar is "is this a real, actionable problem in the CHANGED code?". A finding survives only if you cannot refute it.\n\nFinding: ${f.problem} (${f.file}:L${f.line})\nProposed fix: ${f.fix}\n\n${context}`,
-            { label: `verify:${lens.key}:${f.file}`, phase: "Verify", schema: VERDICT_SCHEMA },
+            {
+              label: `verify:${lens.key}:${f.file}`,
+              phase: "Verify",
+              schema: VERDICT_SCHEMA,
+              model: "opus",
+            },
           ).then((v) => ({ finding: f, verdict: v })),
       ),
     ).then((verdicts) => {

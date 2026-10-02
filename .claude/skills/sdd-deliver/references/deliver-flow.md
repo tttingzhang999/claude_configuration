@@ -26,7 +26,7 @@ it never runs `gh pr merge`, never `--ready`, never pushes the base branch.
 ## The base branch moves exactly once, safely
 
 `main` / the base branch is never merged into locally. The only write to it is
-FINALIZE Step F2's `checkout base + pull`, which fast-forwards to the _already-merged_
+FINALIZE Step F3's `checkout base + pull`, which fast-forwards to the _already-merged_
 remote. So the local base only ever mirrors what the remote already accepted — there is
 no local merge of `sdd/<ticket>` into the base at any point.
 
@@ -48,3 +48,8 @@ own guard instead of clobbering one shared file.
 - A local `git merge sdd/<ticket>` into `main`/base.
 - `jira-automation`'s `implement-ticket` route (that re-does M2–M5).
 - Persist any learning without the user approving the preview.
+
+For opted-in projects, finalize synchronizes canonical specs before Git cleanup;
+read `spec-sync.md`. PR identity persists in proposal.pr. Delivery/re-delivery must
+first enforce the review commit/fingerprint checks in planning-contract.md; an
+existing open PR is updated, not duplicated.

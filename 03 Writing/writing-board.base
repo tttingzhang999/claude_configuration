@@ -4,7 +4,7 @@ filters:
     - 'file.ext == "md"'
 
 formulas:
-  status: 'if(file.folder.contains("drafts"), "📝 Draft", if(file.folder.contains("workspace"), "🏢 Workspace（內部）", "🌐 Blog（公開）"))'
+  status: 'if(file.inFolder("03 Writing/drafts"), "📝 撰寫中", if(file.inFolder("03 Writing/blog"), "🌐 已發布原稿", "其他"))'
   days_since_update: '(now() - file.mtime).days.round(0)'
 
 properties:
@@ -35,7 +35,7 @@ views:
     name: "Drafts（草稿）"
     filters:
       and:
-        - 'file.folder.contains("drafts")'
+        - 'file.inFolder("03 Writing/drafts")'
     order:
       - file.name
       - file.mtime
@@ -45,7 +45,7 @@ views:
     name: "Workspace（內部版）"
     filters:
       and:
-        - 'file.folder.contains("workspace")'
+        - 'file.inFolder("03 Writing/workspace")'
     order:
       - file.name
       - file.mtime
@@ -55,7 +55,7 @@ views:
     name: "Blog（公開版）"
     filters:
       and:
-        - 'file.folder.contains("blog")'
+        - 'file.inFolder("03 Writing/blog")'
     order:
       - file.name
       - file.mtime

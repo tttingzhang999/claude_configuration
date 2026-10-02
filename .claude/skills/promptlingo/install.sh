@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # promptlingo installer (vault-resident).
 # - Seeds runtime vocab.json / patterns.json into <vault>/04 English Learning/data/
-# - Creates reports/, vocab/, patterns/ directories
+# - Creates reports/, glossary/, grammar/ directories
 # - Symlinks ~/.claude/skills/promptlingo to this skill directory so /promptlingo works in any cwd
 set -euo pipefail
 
@@ -16,7 +16,7 @@ echo "    skill:    $SKILL_DIR"
 echo "    learning: $LEARNING_DIR"
 echo "    target:   $CLAUDE_SKILLS_DIR/promptlingo"
 
-mkdir -p "$LEARNING_DIR/data" "$LEARNING_DIR/reports" "$LEARNING_DIR/vocab" "$LEARNING_DIR/patterns"
+mkdir -p "$LEARNING_DIR/data" "$LEARNING_DIR/reports" "$LEARNING_DIR/glossary" "$LEARNING_DIR/grammar"
 
 for f in vocab.json patterns.json; do
   src="$TEMPLATE_DIR/$f"
